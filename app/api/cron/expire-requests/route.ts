@@ -5,6 +5,7 @@ import {
   notifyExpiringSoonRequests,
 } from "@/lib/kyb/service";
 import { notifyClient } from "@/lib/kyb/webhook";
+import { notifyExpiredDocuments } from "@/lib/kyb/expirations";
 
 export const runtime = "nodejs";
 // Margen para expirar/avisar y notificar varias solicitudes en una corrida.
@@ -15,6 +16,8 @@ export const maxDuration = 60;
  * Dos barridos disjuntos sobre solicitudes pre-envío:
  *  - `request.expiring`: links que vencen dentro de la ventana (aviso proactivo).
  *  - `request.expired`:  links que YA vencieron (se pasan a `expired`).
+ * Y uno sobre solicitudes aprobadas:
+ *  - `document.expired`: documentos controlados que vencieron (una vez cada uno).
  * Autorizado por `Authorization: Bearer $CRON_SECRET` (Vercel lo añade solo).
  * Fail-closed: sin `CRON_SECRET` configurado → 401.
  */
@@ -34,8 +37,12 @@ export async function GET(req: NextRequest) {
     await notifyClient(id, "request.expiring");
   }
 
+  // Documentos vencidos de solicitudes aprobadas: solo se encolan.
+  const documentsExpired = await notifyExpiredDocuments();
+
   return NextResponse.json({
     expired: expired.length,
     expiring: expiring.length,
+    documentsExpired,
   });
 }

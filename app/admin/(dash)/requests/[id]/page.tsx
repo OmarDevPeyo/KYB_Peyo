@@ -32,6 +32,9 @@ import { resolveText, type Field } from "@/lib/forms/definition";
 import { fileRefsOf, isLongAnswer } from "@/lib/forms/answers";
 import { dropForeignFileRefs } from "@/lib/kyb/storagePaths";
 import { formatCost } from "@/lib/i18n-ai/pricing";
+import { ExpirationList, type ExpirationItem } from "@/components/admin/ExpirationList";
+import { todayUtc } from "@/lib/forms/expiry";
+import { EXPIRATION_COLUMNS } from "@/lib/kyb/expirations";
 
 export const dynamic = "force-dynamic";
 // Las acciones de este detalle pueden llamar a DIDIT (re-verificar, seleccionar
@@ -50,6 +53,7 @@ export default async function RequestDetail({
   const t = await getTranslations("admin");
   const tCommon = await getTranslations("common");
   const tReport = await getTranslations("report");
+  const tExp = await getTranslations("expirations");
   const { id } = await params;
   const { tr } = await searchParams;
   const supabase = await createServerSupabase();
@@ -73,7 +77,13 @@ export default async function RequestDetail({
         ).data?.name as string | undefined) ?? null)
       : null;
 
-  const [{ data: formRow }, { data: docs }, { data: aml }, { data: diditCharges }] = await Promise.all([
+  const [
+    { data: formRow },
+    { data: docs },
+    { data: aml },
+    { data: diditCharges },
+    { data: expirations },
+  ] = await Promise.all([
     supabase.from("kyb_form_responses").select("data").eq("request_id", id).maybeSingle(),
     supabase
       .from("kyb_documents")
@@ -93,6 +103,12 @@ export default async function RequestDetail({
     viewer.role === "admin"
       ? supabase.from("didit_charges").select("amount, source").eq("request_id", id)
       : Promise.resolve({ data: null }),
+    // Documentos con vencimiento controlado (lib/kyb/expirations.ts).
+    supabase
+      .from("document_expirations")
+      .select(EXPIRATION_COLUMNS)
+      .eq("request_id", id)
+      .order("created_at"),
   ]);
   const diditCost = diditCharges?.length
     ? {
@@ -400,6 +416,19 @@ export default async function RequestDetail({
           );
         })}
       </Section>
+
+      {/* Vencimientos: visibles en cualquier estado, para ver un documento ya
+          vencido antes de aprobar. */}
+      {(expirations ?? []).length > 0 && (
+        <Section title={tExp("detailTitle")}>
+          <Card className="overflow-hidden">
+            <ExpirationList
+              items={(expirations ?? []) as unknown as ExpirationItem[]}
+              today={todayUtc()}
+            />
+          </Card>
+        </Section>
+      )}
 
       {/* Documentos */}
       <Section title={t("documents")}>

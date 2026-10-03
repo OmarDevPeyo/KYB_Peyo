@@ -162,3 +162,15 @@ test("publicDefinition no deja la configuración interna", () => {
   // No muta el original (el builder y el servidor lo siguen usando).
   assert.deepEqual(def.internalFields, { title: "name" });
 });
+
+test("publicDefinition quita la marca de vencimiento de las preguntas", () => {
+  const def = form([
+    section("s1", [
+      field("doc", "file", { expiry: { source: "date_field", dateFieldId: "due" } }),
+      field("due", "date"),
+    ]),
+  ]);
+  const pub = publicDefinition(def);
+  assert.equal(JSON.stringify(pub).includes("expiry"), false);
+  assert.deepEqual(def.sections[0].fields[0].expiry, { source: "date_field", dateFieldId: "due" });
+});

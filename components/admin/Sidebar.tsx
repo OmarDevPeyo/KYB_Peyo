@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
+  CalendarClock,
   LogOut,
   Menu,
   PanelLeftClose,
@@ -192,6 +193,12 @@ function NavLinks({
   const items: { href: string; label: string; icon: ReactNode; exact: boolean }[] = [
     { href: "/admin", label: t("requests"), icon: <ListIcon />, exact: true },
     { href: "/admin/forms", label: t("forms"), icon: <TemplateIcon />, exact: false },
+    {
+      href: "/admin/expirations",
+      label: t("expirations"),
+      icon: <CalendarClock size={18} aria-hidden />,
+      exact: false,
+    },
     // El catálogo de DIDIT es el de la cuenta de Peyo: solo el admin (las
     // páginas lo exigen también; esto solo evita mostrar un link que da 404).
     ...(isAdmin

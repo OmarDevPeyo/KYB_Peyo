@@ -8,7 +8,7 @@ import { buildAmlSubject } from "@/lib/aml/mapping";
 import { dispatchDiditReviews, type DiditCheckRow } from "@/lib/didit/verify";
 import { recordCheckCharge } from "@/lib/didit/costs";
 import { notifyClient } from "@/lib/kyb/webhook";
-import { getFormById, resolveRequestDefinition } from "@/lib/forms/store";
+import { liveDefinitionFor, resolveRequestDefinition } from "@/lib/forms/store";
 import { pickRequestForm, type FormCandidate, type FormChoice } from "@/lib/forms/formChoice";
 import { dropForeignFileRefs, isOwnedPath } from "@/lib/kyb/storagePaths";
 import { reachableFields } from "@/lib/forms/logic";
@@ -428,20 +428,6 @@ type SummarySource = {
   form_definition?: unknown;
   org_id: string;
 };
-
-/**
- * Formulario vivo de la solicitud, del que se lee la marca de hoy. Sin copia
- * congelada válida, la definición de la solicitud ya ES el formulario vivo.
- */
-async function liveDefinitionFor(
-  req: SummarySource,
-  requestDef: FormDefinition,
-): Promise<FormDefinition | null> {
-  if (!req.form_id || !formDefinitionSchema.safeParse(req.form_definition).success) {
-    return requestDef;
-  }
-  return (await getFormById(req.form_id))?.definition ?? null;
-}
 
 /**
  * Título y email de contacto según las respuestas (ver resolveRequestSummary).
@@ -943,6 +929,12 @@ export async function runVerifications(
       );
     }
   }
+
+  // Solo una solicitud enviada o en revisión pasa a revisión. Un re-run forzado
+  // sobre una decidida (o devuelta para correcciones) actualiza los checks sin
+  // reabrirla: antes la volvía a `under_review` y el cliente recibía
+  // `verification.completed` de una solicitud ya aprobada.
+  if (req.status !== "submitted" && req.status !== "under_review") return;
 
   await setStatus(requestId, "under_review", req.status, "system", "moved_to_review");
 

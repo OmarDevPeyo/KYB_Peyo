@@ -150,11 +150,24 @@ export function resolveRequestSummary(
 
 /**
  * La definición que viaja al navegador del solicitante: sin la configuración
- * interna. La pregunta marcada se ve como cualquier otra obligatoria.
+ * interna (roles y control de vencimiento). La pregunta marcada se ve como
+ * cualquier otra obligatoria.
  */
 export function publicDefinition(def: FormDefinition): FormDefinition {
-  if (!def.internalFields) return def;
+  const hasExpiry = def.sections.some((s) => s.fields.some((f) => f.expiry));
+  if (!def.internalFields && !hasExpiry) return def;
   const copy = { ...def };
   delete copy.internalFields;
+  if (hasExpiry) {
+    copy.sections = def.sections.map((s) => ({
+      ...s,
+      fields: s.fields.map((f) => {
+        if (!f.expiry) return f;
+        const rest = { ...f };
+        delete rest.expiry;
+        return rest;
+      }),
+    }));
+  }
   return copy;
 }

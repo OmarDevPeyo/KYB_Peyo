@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { env } from "@/lib/env";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logAudit } from "@/lib/kyb/service";
+import { syncRequestExpirations } from "@/lib/kyb/expirations";
 import { alreadySeen, markSeen } from "@/lib/kyb/replayGuard";
 import type { AmlStatus } from "@/lib/kyb/types";
 
@@ -88,6 +89,8 @@ export async function POST(req: NextRequest) {
       action: "aml_webhook",
       metadata: { status, externalRef },
     });
+    // El payload reemplaza el resultado: el vencimiento de un carnet sale de ahí.
+    await syncRequestExpirations(check.request_id);
   }
 
   await markSeen("didit", raw);

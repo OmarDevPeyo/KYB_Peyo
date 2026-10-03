@@ -13,7 +13,19 @@ export type WebhookEvent =
   | "decision.made"
   | "changes.requested"
   | "request.expiring"
-  | "request.expired";
+  | "request.expired"
+  | "document.expired"
+  | "document.renewed";
+
+export interface NotifyOptions {
+  /** Datos propios del evento, que se suman al payload (p. ej. `document`). */
+  data?: Record<string, unknown>;
+  /**
+   * `false` = solo encolar, sin intento inmediato. Para barridos que pueden
+   * encolar muchos eventos en una corrida: el drenado por minuto los entrega.
+   */
+  inline?: boolean;
+}
 
 /**
  * Espera (en minutos) DESPUÉS de cada intento fallido. El índice es
@@ -59,6 +71,7 @@ const minutesFromNow = (m: number) => new Date(Date.now() + m * 60_000).toISOStr
 export async function notifyClient(
   requestId: string,
   event: WebhookEvent,
+  opts: NotifyOptions = {},
 ): Promise<void> {
   try {
     const supabase = createServiceClient();
@@ -100,6 +113,7 @@ export async function notifyClient(
       created_at: req.created_at,
       submitted_at: req.submitted_at,
       decided_at: req.decided_at,
+      ...(opts.data ?? {}),
       // Saneado igual que en la API pública: este payload viaja a una URL de
       // terceros, así que es el último sitio donde puede escaparse un secreto.
       aml: publicAmlChecks(aml),
@@ -120,7 +134,7 @@ export async function notifyClient(
       .select("id, request_id, endpoint_id, event, event_id, payload, attempts")
       .single();
 
-    if (row) await attemptDelivery(row as DeliveryRow);
+    if (row && opts.inline !== false) await attemptDelivery(row as DeliveryRow);
   } catch (e) {
     console.error(`[webhook] request=${requestId} no se pudo encolar:`, e);
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiGuard } from "@/lib/auth/apiGuard";
 import { createServiceClient } from "@/lib/supabase/service";
 import { publicAmlChecks } from "@/lib/kyb/amlPublic";
+import { loadRequestExpirations, publicExpirations } from "@/lib/kyb/expirations";
 
 export const runtime = "nodejs";
 
@@ -34,11 +35,14 @@ export async function GET(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const { data: amlChecks } = await supabase
-    .from("aml_checks")
-    .select("provider, status, result, created_at, updated_at")
-    .eq("request_id", id)
-    .order("created_at", { ascending: false });
+  const [{ data: amlChecks }, expirations] = await Promise.all([
+    supabase
+      .from("aml_checks")
+      .select("provider, status, result, created_at, updated_at")
+      .eq("request_id", id)
+      .order("created_at", { ascending: false }),
+    loadRequestExpirations(id),
+  ]);
 
   return NextResponse.json({
     id: request.id,
@@ -61,5 +65,7 @@ export async function GET(
     decidedAt: request.decided_at,
     // `result` es el blob crudo del proveedor: sale saneado, nunca directo.
     aml: publicAmlChecks(amlChecks),
+    // Documentos con vencimiento controlado. Un vencido no cambia `status`.
+    documentExpirations: publicExpirations(expirations),
   });
 }

@@ -79,6 +79,21 @@ export async function resolveRequestDefinition(
   return form?.definition ?? null;
 }
 
+/**
+ * Formulario vivo de la solicitud, del que se lee la configuración de hoy
+ * (roles internos, control de vencimiento). Sin copia congelada válida, la
+ * definición de la solicitud ya ES el formulario vivo.
+ */
+export async function liveDefinitionFor(
+  req: { form_id?: string | null; form_definition?: unknown },
+  requestDef: FormDefinition,
+): Promise<FormDefinition | null> {
+  if (!req.form_id || !formDefinitionSchema.safeParse(req.form_definition).success) {
+    return requestDef;
+  }
+  return (await getFormById(req.form_id))?.definition ?? null;
+}
+
 /** Formulario publicado por defecto de una org: el más reciente. */
 export async function getDefaultPublishedForm(orgId: string): Promise<FormRow | null> {
   const supabase = createServiceClient();

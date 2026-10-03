@@ -16,6 +16,7 @@ import {
   DOCUMENTS_BUCKET,
 } from "@/lib/kyb/service";
 import { notifyClient } from "@/lib/kyb/webhook";
+import { syncRequestExpirations } from "@/lib/kyb/expirations";
 import { createServiceClient } from "@/lib/supabase/service";
 import { documentPath, isOwnedPath, mimeAllowed } from "@/lib/kyb/storagePaths";
 import { kybSubmitSchema } from "@/lib/forms/schema";
@@ -358,8 +359,12 @@ export async function submitFormAction(
     // Aviso inmediato de envío (ver submitAction). También dispara en el reenvío
     // tras corrección: la app deduplica por su propio estado si lo necesita.
     after(() => notifyClient(r.req.id, "request.submitted"));
-    // Verificaciones DIDIT/AML en segundo plano (ver submitAction).
-    after(() => runVerifications(r.req.id));
+    // Verificaciones DIDIT/AML en segundo plano (ver submitAction). Después,
+    // los vencimientos: la fecha de un carnet sale del check de DIDIT.
+    after(async () => {
+      await runVerifications(r.req.id);
+      await syncRequestExpirations(r.req.id);
+    });
     return { ok: true };
   } catch (e) {
     console.error("[submitFormAction] falló", e);

@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { EyeOff } from "lucide-react";
+import { CalendarClock, EyeOff } from "lucide-react";
 import {
   FIELD_TYPES,
   DIDIT_FEATURES,
@@ -20,6 +20,7 @@ import {
   type Condition,
   type ConditionOp,
   type Field,
+  type FieldExpiry,
   type FieldReview,
   type FieldType,
   type FormDefinition,
@@ -33,9 +34,15 @@ import {
   internalRoleFor,
   internalRoleOf,
   mayBeSkipped,
-  normalizeInternalFields,
   setInternalRole,
 } from "@/lib/forms/internalFields";
+import {
+  canUseDiditExpiry,
+  expiryDateLinks,
+  expiryWarnings,
+  type ExpiryWarning,
+} from "@/lib/forms/expiry";
+import { normalizeFormDefinition } from "@/lib/forms/normalize";
 import {
   applyTranslations,
   coverage,
@@ -225,8 +232,9 @@ export function FormBuilder({
       const d = structuredClone(prev);
       mut(d);
       // Tras CUALQUIER cambio: borrar la pregunta marcada, cambiarle el tipo o
-      // desmarcar "Obligatoria" no deja los roles internos en un estado inválido.
-      normalizeInternalFields(d);
+      // desmarcar "Obligatoria" no deja los roles internos ni el control de
+      // vencimiento en un estado inválido.
+      normalizeFormDefinition(d);
       return d;
     });
   }
@@ -1208,6 +1216,8 @@ function SectionCard({
 }) {
   const titlePath = sectionPath(section.id, "title");
   const descPath = sectionPath(section.id, "desc");
+  const expiryLinks = expiryDateLinks({ sections });
+  const expiryWarns = expiryWarnings({ sections });
   return (
     <div className="rounded-2xl border border-border bg-surface-card p-4 shadow-md ring-1 ring-black/5 dark:ring-white/10">
       <div className="mb-3 flex items-center gap-2">
@@ -1303,6 +1313,8 @@ function SectionCard({
               sectionId={section.id}
               role={internalRoleOf(internalFields, field.id)}
               skippable={mayBeSkipped(sections, index, field)}
+              expiryOf={expiryLinks.get(field.id) ?? null}
+              expiryWarnings={expiryWarns.get(field.id) ?? []}
             />
             {/* Insertar una pregunta justo debajo de esta */}
             <AddFieldSelect
@@ -1585,6 +1597,153 @@ function DiditReviewEditor({
   );
 }
 
+// ---------- Control de vencimiento (popover por pregunta de archivo) ----------
+
+/**
+ * Chip para controlar el vencimiento de un documento. La fecha sale de DIDIT
+ * (solo el anverso de un id_verification) o de una pregunta de fecha que
+ * responde el solicitante; esa pregunta queda obligatoria.
+ */
+function ExpiryEditor({
+  field,
+  dateFields,
+  warnings,
+  t,
+  onChange,
+  onAddDateField,
+}: {
+  field: Field;
+  /** Preguntas de fecha del formulario, por id. */
+  dateFields: { id: string; label: string }[];
+  warnings: ExpiryWarning[];
+  t: TFn;
+  onChange: (expiry: FieldExpiry | undefined) => void;
+  /** Inserta una pregunta de fecha debajo de esta y la enlaza. */
+  onAddDateField: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = field.expiry;
+  const diditOk = canUseDiditExpiry(field);
+  const linked =
+    current?.source === "date_field"
+      ? dateFields.find((d) => d.id === current.dateFieldId)
+      : undefined;
+  const healthy = warnings.length === 0;
+  const chip = !current
+    ? `+ ${t("expiryTrack")}`
+    : current.source === "didit"
+      ? t("expiryChipDidit")
+      : t("expiryChipDate", { label: linked?.label ?? "—" });
+
+  return (
+    <div className="relative flex items-center gap-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+          current
+            ? healthy
+              ? "border-brand/40 bg-brand/10 text-brand"
+              : "border-warning/50 bg-warning/10 text-foreground"
+            : "border-border bg-surface text-muted hover:bg-surface-2"
+        }`}
+      >
+        <CalendarClock size={12} aria-hidden />
+        {chip}
+        {healthy ? "" : " ⚠"}
+      </button>
+      {current && <InfoTip text={t("expiryTip")} />}
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-hidden
+            className="fixed inset-0 z-10 cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute left-0 z-20 mt-1 w-72 rounded-xl border border-border bg-surface-card p-2 shadow-lg ring-1 ring-black/5 dark:ring-white/10">
+            <p className="mb-1 px-1 text-xs font-semibold text-muted">{t("expiryTitle")}</p>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(undefined);
+                setOpen(false);
+              }}
+              className={`block w-full rounded px-2 py-1 text-left text-xs hover:bg-surface-2 ${
+                !current ? "font-semibold text-foreground" : "text-muted"
+              }`}
+            >
+              {t("expiryNone")}
+            </button>
+            <button
+              type="button"
+              disabled={!diditOk}
+              onClick={() => {
+                onChange({ source: "didit" });
+                setOpen(false);
+              }}
+              className={`block w-full rounded px-2 py-1 text-left text-xs ${
+                diditOk ? "hover:bg-surface-2" : "cursor-not-allowed opacity-50"
+              } ${current?.source === "didit" ? "font-semibold text-brand" : "text-foreground"}`}
+            >
+              {t("expiryDidit")}
+              {!diditOk && (
+                <span className="mt-0.5 block text-[10px] text-muted">
+                  {t("expiryDiditRequires")}
+                </span>
+              )}
+            </button>
+            <div className="mt-1 border-t border-border pt-1">
+              <p
+                className={`px-1 text-xs ${
+                  current?.source === "date_field" ? "font-semibold text-brand" : "text-foreground"
+                }`}
+              >
+                {t("expiryDate")}
+              </p>
+              {dateFields.length === 0 ? (
+                <p className="px-1 text-[10px] text-muted">{t("expiryNoDateFields")}</p>
+              ) : (
+                <select
+                  className={`${smallInput} mt-1 w-full`}
+                  value={current?.source === "date_field" ? current.dateFieldId : ""}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      onChange({ source: "date_field", dateFieldId: e.target.value });
+                    }
+                  }}
+                >
+                  <option value="">{t("expiryPickDate")}</option>
+                  {dateFields.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  onAddDateField();
+                  setOpen(false);
+                }}
+                className="mt-1 block w-full rounded px-2 py-1 text-left text-xs text-brand hover:bg-surface-2"
+              >
+                + {t("expiryAddDateField")}
+              </button>
+            </div>
+            {warnings.map((w) => (
+              <p key={w} className="mt-1 px-1 text-[10px] text-foreground">
+                ⚠ {t(`expiryWarn_${w}`)}
+              </p>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FieldCard({
   field,
   si,
@@ -1599,6 +1758,8 @@ function FieldCard({
   sectionId,
   role,
   skippable,
+  expiryOf,
+  expiryWarnings: expiryWarns,
 }: {
   field: Field;
   si: number;
@@ -1615,6 +1776,10 @@ function FieldCard({
   role: InternalRole | null;
   /** La pregunta puede quedar sin responder (ver mayBeSkipped). */
   skippable: boolean;
+  /** Pregunta de archivo cuyo vencimiento da esta (si es una fecha enlazada). */
+  expiryOf: Field | null;
+  /** Avisos del control de vencimiento de esta pregunta de archivo. */
+  expiryWarnings: ExpiryWarning[];
 }) {
   const mut = (fn: (f: Field) => void) =>
     update((d) => fn(d.sections[si].fields[fi]));
@@ -1653,16 +1818,23 @@ function FieldCard({
             </option>
           ))}
         </select>
-        {/* Con rol interno es obligatoria siempre (normalizeInternalFields). */}
+        {/* Con rol interno, o si es la fecha de vencimiento de un documento, es
+            obligatoria siempre (normalizeFormDefinition). */}
         <label
           className="flex items-center gap-1 text-xs text-muted"
-          title={role ? t("internalRequiredLocked") : undefined}
+          title={
+            role
+              ? t("internalRequiredLocked")
+              : expiryOf
+                ? t("expiryRequiredLocked")
+                : undefined
+          }
         >
           <input
             type="checkbox"
             className="accent-brand"
-            checked={field.required || role !== null}
-            disabled={role !== null}
+            checked={field.required || role !== null || expiryOf !== null}
+            disabled={role !== null || expiryOf !== null}
             onChange={(e) => mut((f) => (f.required = e.target.checked))}
           />
           {t("required")}
@@ -1794,6 +1966,41 @@ function FieldCard({
               })
             }
           />
+        )}
+        {field.type === "file" && (
+          <ExpiryEditor
+            field={field}
+            dateFields={allFieldKeys
+              .filter((k) => k.field.type === "date")
+              .map((k) => ({ id: k.field.id, label: k.label }))}
+            warnings={expiryWarns}
+            t={t}
+            onChange={(expiry) =>
+              mut((f) => {
+                if (expiry) f.expiry = expiry;
+                else delete f.expiry;
+              })
+            }
+            onAddDateField={() =>
+              update((d) => {
+                const fields = d.sections[si].fields;
+                const doc = fields[fi];
+                const date = newField("date");
+                date.label = { es: "Fecha de vencimiento", en: "Expiry date" };
+                date.required = true;
+                const key = `${doc.key}_expires_on`;
+                if (!d.sections.some((s) => s.fields.some((g) => g.key === key))) date.key = key;
+                fields.splice(fi + 1, 0, date);
+                doc.expiry = { source: "date_field", dateFieldId: date.id };
+              })
+            }
+          />
+        )}
+        {expiryOf && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-brand/40 px-2 py-0.5 text-xs text-brand">
+            <CalendarClock size={12} aria-hidden />
+            {t("expiryLinkedTo", { label: resolveText(expiryOf.label, locale) || expiryOf.key })}
+          </span>
         )}
         <InternalRoleToggle field={field} role={role} t={t} update={update} />
         <div className="ml-auto flex items-center gap-1">

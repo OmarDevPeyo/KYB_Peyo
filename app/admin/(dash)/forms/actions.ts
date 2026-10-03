@@ -12,8 +12,10 @@ import {
   resolveText,
 } from "@/lib/forms/definition";
 import { isGoogleFormExport, fromGoogleForm } from "@/lib/forms/import-google";
-import { normalizeInternalFields } from "@/lib/forms/internalFields";
+import { normalizeFormDefinition } from "@/lib/forms/normalize";
+import { expirySignature } from "@/lib/forms/expiry";
 import { refreshFormRequestsSummary } from "@/lib/kyb/service";
+import { refreshFormExpirations } from "@/lib/kyb/expirations";
 
 /**
  * Motivo por el que se rechazó archivar/eliminar. Se devuelve como CÓDIGO (no
@@ -79,7 +81,7 @@ export async function saveForm(
     return { ok: false, error: "La definición del formulario no es válida." };
   }
   // El builder ya normaliza; esto cubre a quien llame al action sin pasar por él.
-  const definition = normalizeInternalFields(parsed.data);
+  const definition = normalizeFormDefinition(parsed.data);
   const supabase = createServiceClient();
   const { error } = await supabase
     .from("forms")
@@ -100,6 +102,17 @@ export async function saveForm(
       await refreshFormRequestsSummary(id, definition);
     } catch (e) {
       console.error(`[saveForm] no se pudo recalcular el título de las solicitudes form=${id}`, e);
+    }
+  }
+  // Igual con el control de vencimiento: marcar o desmarcar un documento
+  // recalcula los vencimientos de todas sus solicitudes (backfill).
+  const beforeDef = formDefinitionSchema.safeParse(current.definition);
+  const beforeSignature = beforeDef.success ? expirySignature(beforeDef.data) : null;
+  if (beforeSignature !== expirySignature(definition)) {
+    try {
+      await refreshFormExpirations(id, definition);
+    } catch (e) {
+      console.error(`[saveForm] no se pudo recalcular los vencimientos form=${id}`, e);
     }
   }
   revalidatePath("/admin/forms");
@@ -171,7 +184,7 @@ export async function duplicateForm(id: string) {
       status: "draft",
       source: data.source,
       source_ref: data.source_ref,
-      definition: normalizeInternalFields(parsed.data),
+      definition: normalizeFormDefinition(parsed.data),
     })
     .select("id")
     .single();
@@ -365,7 +378,7 @@ export async function importFormJson(json: string, orgId?: string | null): Promi
       name: resolveText(parsed.data.title, "es") || "Formulario importado",
       status: "draft",
       source: "manual",
-      definition: normalizeInternalFields(parsed.data),
+      definition: normalizeFormDefinition(parsed.data),
     })
     .select("id")
     .single();

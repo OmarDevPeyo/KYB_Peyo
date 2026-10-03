@@ -20,6 +20,7 @@ import { kybSelect, runKybRegistryCheck } from "@/lib/didit/verify";
 import { recordKybCharge } from "@/lib/didit/costs";
 import { resolveRequestDefinition } from "@/lib/forms/store";
 import { notifyClient } from "@/lib/kyb/webhook";
+import { syncRequestExpirations } from "@/lib/kyb/expirations";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { KybDecision } from "@/lib/kyb/types";
@@ -47,6 +48,9 @@ export async function decideAction(
   );
   // Push al cliente en segundo plano (no bloquea la respuesta del panel).
   after(() => notifyClient(requestId, "decision.made"));
+  // Red de seguridad: los vencimientos se calculan al enviar y al verificar,
+  // pero una aprobada es lo que lista la pantalla Vencimientos.
+  if (decision === "approved") after(() => syncRequestExpirations(requestId));
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/admin");
 }
@@ -88,7 +92,9 @@ export async function rerunVerificationsAction(requestId: string) {
   const analyst = await requireAnalyst();
   if (!(await loadOwnedRequest(analyst, requestId))) notFound();
   await runVerifications(requestId, { force: true });
+  await syncRequestExpirations(requestId);
   revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath("/admin/expirations");
 }
 
 /**

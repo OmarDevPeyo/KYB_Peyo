@@ -160,6 +160,10 @@ Query params: `status`, `external_ref`, `limit` (def 20, máx 100), `offset` (de
     { "provider": "didit", "status": "passed",
       "result": { /* respuesta de DIDIT, sin campos internos nuestros */ },
       "created_at": "…", "updated_at": "…" }
+  ],
+  "documentExpirations": [
+    { "fieldId": "…", "fieldKey": "business_license", "label": "Licencia de funcionamiento",
+      "expiresOn": "2026-09-30", "source": "declared", "status": "expired" }
   ]
 }
 ```
@@ -189,6 +193,16 @@ Query params: `status`, `external_ref`, `limit` (def 20, máx 100), `offset` (de
   `officers[]` y `beneficial_owners[]`) más `result.declared` (lo ingresado en
   el formulario). Un check `pending` en `candidate_selection` espera que el
   analista elija la empresa correcta.
+- `documentExpirations[]`: documentos cuyo vencimiento controla el formulario
+  (carnets, licencias, permisos). Uno por documento subido; vacío si el formulario
+  no controla ninguno. `expiresOn` es un día (`YYYY-MM-DD`, sin hora) o `null` si
+  no hay fecha. `source`: `didit` (leída del documento por la verificación de
+  identidad), `declared` (la escribió el solicitante) o `analyst` (la corrigió
+  nuestro analista). `status`: `expired` | `expiring` (vence en los próximos 30
+  días) | `valid` | `unknown`; el día del vencimiento todavía es `expiring`.
+  **Un documento vencido no cambia el `status` de la solicitud**: una aprobada
+  sigue `approved`. Es un aviso para que decidas tú (§8, verificación vs
+  activación).
 
 `404 { "error": "not_found" }` si la solicitud no existe o no es tuya.
 
@@ -447,6 +461,7 @@ Hacemos `POST` a tu endpoint cuando:
 - `request.expiring` — aviso **proactivo**: el link está **por vencer** (~3 días antes del `expires_at`), mientras la solicitud sigue **no enviada**. Se dispara **una sola vez** por ciclo de link (el marcador se reinicia si re-emites el link). El body incluye `expires_at`. Úsalo para recordarle al usuario que termine o para renovar con `POST /:id/invitation` (§4.7). Detectado por el barrido programado, así que llega aunque el usuario no vuelva a abrir el link.
 - `request.expired` — el link/solicitud **venció** sin que el usuario terminara (estado `expired`; solo aplica a solicitudes aún **no enviadas**). Detectado por el mismo barrido programado, así que llega aunque el usuario nunca vuelva a abrir el link. Para reenviarle una invitación nueva, llama a `POST /:id/invitation` (§4.7), que revive la solicitud conservando el borrador.
   - **Timing:** `request.expired` se emite **después** de vencer; el heads-up previo es `request.expiring`. El acceso del usuario al link se corta **en tiempo real** en el instante del vencimiento (`expires_at`), independientemente del barrido. Lo que puede llegar con retraso es solo la **notificación**: con el barrido diario, ambos eventos llegan dentro de su ventana (hasta ~24 h de resolución). Si necesitas más precisión, sube la frecuencia del barrido (requiere plan que lo permita).
+- `document.expired` — venció un **documento** con vencimiento controlado (carnet, licencia) de una solicitud **aprobada**. Se dispara **una sola vez** por documento y fecha, desde el barrido diario. El body incluye `document` (`{ field_id, field_key, label, expires_on, source }`). **La solicitud sigue `approved`**: el evento es un aviso. Si se corrige la fecha o llega un documento nuevo que vuelve a vencer, puede llegar otro `document.expired` para la misma pregunta.
 
 ### Request que recibes
 Cabeceras:
@@ -553,6 +568,7 @@ documentos) son más estrictos.
   - `changes_requested` es un estado **no terminal** intermedio: se entra desde `submitted`/`under_review` al pedir correcciones, y se sale a `submitted` cuando el usuario reenvía.
 - **`decision`**: `approved` | `rejected` | `null`.
 - **AML `status`** (por check): `pending` | `passed` | `flagged` | `error`.
+- **`documentExpirations[].status`**: `expired` | `expiring` | `valid` | `unknown`. **`source`**: `didit` | `declared` | `analyst`.
 
 ### Vocabulario: verificación vs activación
 

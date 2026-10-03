@@ -136,6 +136,19 @@ export const reviewSchema = z.object({
 export type FieldReview = z.infer<typeof reviewSchema>;
 
 // ------------------------------------------------------------
+// Control de vencimiento (metadata por-campo, solo preguntas `file`). La fecha
+// sale del resultado de DIDIT id_verification o de una pregunta `date` del
+// mismo formulario (por id: el key es editable). Sin refinamientos, por la
+// misma razón que `internalFieldsSchema`: los invariantes los impone
+// `normalizeExpiry` (./expiry.ts).
+// ------------------------------------------------------------
+export const expirySchema = z.discriminatedUnion("source", [
+  z.object({ source: z.literal("didit") }),
+  z.object({ source: z.literal("date_field"), dateFieldId: z.string().min(1) }),
+]);
+export type FieldExpiry = z.infer<typeof expirySchema>;
+
+// ------------------------------------------------------------
 // Convenciones de detección para kyb_registry (compartidas entre el builder
 // y el dispatch server-side — única fuente de verdad, client-safe).
 // ------------------------------------------------------------
@@ -241,6 +254,7 @@ export const fieldSchema = z.object({
   validation: validationSchema,
   visibleIf: conditionSchema.optional(),
   review: reviewSchema.optional(),
+  expiry: expirySchema.optional(),
 });
 export type Field = z.infer<typeof fieldSchema>;
 
