@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarClock, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { CalendarClock, ChevronLeft, ChevronRight, Mail, Search } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { requireAnalyst } from "@/lib/auth/admin";
@@ -283,6 +283,15 @@ export default async function ExpirationsPage({
                     <div className="border-t border-border bg-surface-2/40">
                       <ExpirationList items={docs} today={today} />
                       <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2.5">
+                        {r.open_renewal_state !== "submitted" && (
+                          <Link
+                            href={`/admin/expirations/${r.request_id}/email`}
+                            className={buttonClass({ size: "sm" })}
+                          >
+                            <Mail size={16} aria-hidden />
+                            {t("prepareEmail")}
+                          </Link>
+                        )}
                         <RenewalLinkPanel
                           requestId={r.request_id}
                           blocked={r.open_renewal_state === "submitted"}

@@ -34,6 +34,10 @@ export const env = {
   resendApiKey: () => process.env.RESEND_API_KEY ?? "",
   alertEmailFrom: () => process.env.ALERT_EMAIL_FROM ?? "PEYO Forms <onboarding@resend.dev>",
   alertEmailTo: () => process.env.ALERT_EMAIL_TO ?? "",
+  // Remitente de los correos al solicitante (renovación de documentos). Tiene
+  // que ser de un dominio verificado en Resend: el de prueba (resend.dev) solo
+  // entrega al dueño de la cuenta. Sin él, en producción no se envía.
+  applicantEmailFrom: () => process.env.APPLICANT_EMAIL_FROM ?? "",
   // --- Traducción con IA (formularios y respuestas) ---
   // `mock` por defecto: un entorno sin configurar nunca gasta tokens.
   translateProvider: () => process.env.TRANSLATE_PROVIDER ?? "mock",

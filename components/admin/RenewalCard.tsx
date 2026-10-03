@@ -1,4 +1,7 @@
+import Link from "next/link";
+import { Mail } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
+import { buttonClass } from "@/components/ui/Button";
 import { resolveText, type LocalizedText } from "@/lib/forms/definition";
 import { fileRefsOf } from "@/lib/forms/answers";
 import { expiryStatus, proposedRenewalExpiry } from "@/lib/forms/expiry";
@@ -50,16 +53,27 @@ export async function RenewalCard({
   return (
     <div className="space-y-3">
       {approved && (
-        <RenewalLinkPanel
-          requestId={requestId}
-          blocked={blocked}
-          documents={expirations.map((e) => ({
-            fieldId: e.field_id,
-            label: resolveText(e.field_label as LocalizedText, locale) || e.field_key,
-            status: expiryStatus(e.expires_on, today),
-            date: e.expires_on ? fmtDate(e.expires_on) : null,
-          }))}
-        />
+        <div className="flex flex-wrap items-start gap-2">
+          {!blocked && (
+            <Link
+              href={`/admin/expirations/${requestId}/email`}
+              className={buttonClass({ size: "sm" })}
+            >
+              <Mail size={16} aria-hidden />
+              {t("prepareEmail")}
+            </Link>
+          )}
+          <RenewalLinkPanel
+            requestId={requestId}
+            blocked={blocked}
+            documents={expirations.map((e) => ({
+              fieldId: e.field_id,
+              label: resolveText(e.field_label as LocalizedText, locale) || e.field_key,
+              status: expiryStatus(e.expires_on, today),
+              date: e.expires_on ? fmtDate(e.expires_on) : null,
+            }))}
+          />
+        </div>
       )}
 
       {renewals.slice(0, MAX_ROUNDS).map((r) => {
