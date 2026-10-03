@@ -33,6 +33,7 @@ export async function AmlCheckCard({
   sectionTitle,
   fieldLabel,
   requestId,
+  superseded = false,
 }: {
   check: AmlCheckRow;
   image?: CheckImage;
@@ -43,6 +44,11 @@ export async function AmlCheckCard({
   fieldLabel?: string;
   /** Necesario para las acciones de kyb_registry (picker / repetir búsqueda). */
   requestId?: string;
+  /**
+   * Hay un check más nuevo del mismo documento (una renovación aceptada): este
+   * describe el documento anterior, no el que está hoy en las respuestas.
+   */
+  superseded?: boolean;
 }) {
   const t = await getTranslations("admin");
   const tB = await getTranslations("builder");
@@ -91,6 +97,11 @@ export async function AmlCheckCard({
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="font-medium text-foreground">{title}</span>
         <StatusBadge status={amlToBadge(check.status)} />
+        {superseded && (
+          <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium text-muted">
+            {t("checkSuperseded")}
+          </span>
+        )}
         <span className="ml-auto text-xs text-muted">{check.provider}</span>
       </div>
 

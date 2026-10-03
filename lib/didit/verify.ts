@@ -521,6 +521,11 @@ export async function dispatchDiditReviews(input: {
   answers: Record<string, unknown>;
   /** Claves `feature:fieldKey` ya verificadas (se saltan; permite reanudar). */
   skip?: Set<string>;
+  /**
+   * Solo estas claves `feature:fieldKey` (la renovación de un documento vuelve
+   * a verificar ese documento y nada más).
+   */
+  only?: Set<string>;
   /** Persiste cada verificación apenas completa (progreso parcial resiliente). */
   onRow?: (row: DiditCheckRow) => Promise<void> | void;
 }): Promise<DiditCheckRow[]> {
@@ -548,6 +553,7 @@ export async function dispatchDiditReviews(input: {
     const { feature, fieldKey } = task;
     // Saltar lo ya verificado con éxito en una corrida previa (reanudable).
     if (input.skip?.has(`${feature}:${fieldKey}`)) continue;
+    if (input.only && !input.only.has(`${feature}:${fieldKey}`)) continue;
     running.push(
       (async () => {
         let row: DiditCheckRow;

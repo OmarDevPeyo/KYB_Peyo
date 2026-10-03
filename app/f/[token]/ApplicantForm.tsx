@@ -12,10 +12,36 @@ import {
   deleteDocumentAction,
   submitFormAction,
 } from "./actions";
+import {
+  saveRenewalDraftAction,
+  createRenewalUploadUrlAction,
+  confirmRenewalUploadAction,
+  deleteRenewalDocumentAction,
+  submitRenewalAction,
+} from "./renewalActions";
 
 // Duplicado a propósito (el nombre del bucket vive en lib/kyb/service.ts, que es
 // server-only y no se puede importar en este componente cliente).
 const DOCUMENTS_BUCKET = "kyb-documents";
+
+// Mismas firmas: la renovación (link de document_renewals) solo cambia a quién
+// le habla el formulario.
+const ACTIONS = {
+  request: {
+    saveDraft: saveDraftAction,
+    createUploadUrl: createUploadUrlAction,
+    confirmUpload: confirmUploadAction,
+    deleteDocument: deleteDocumentAction,
+    submit: submitFormAction,
+  },
+  renewal: {
+    saveDraft: saveRenewalDraftAction,
+    createUploadUrl: createRenewalUploadUrlAction,
+    confirmUpload: confirmRenewalUploadAction,
+    deleteDocument: deleteRenewalDocumentAction,
+    submit: submitRenewalAction,
+  },
+} as const;
 
 export function ApplicantForm({
   token,
@@ -26,6 +52,7 @@ export function ApplicantForm({
   mode = "live",
   corrections,
   anchorSectionId,
+  flow = "request",
 }: {
   token: string;
   definition: FormDefinition;
@@ -35,8 +62,12 @@ export function ApplicantForm({
   mode?: "live" | "correction";
   corrections?: { key: string; note: string }[];
   anchorSectionId?: string;
+  /** `renewal`: renovación de documentos de una solicitud aprobada. */
+  flow?: "request" | "renewal";
 }) {
   const t = useTranslations("form");
+  const actions = ACTIONS[flow];
+  const renewal = flow === "renewal";
 
   return (
     <DynamicForm
@@ -48,12 +79,12 @@ export function ApplicantForm({
       corrections={corrections}
       anchorSectionId={anchorSectionId}
       onSaveDraft={async (a) => {
-        await saveDraftAction(token, a as Record<string, unknown>);
+        await actions.saveDraft(token, a as Record<string, unknown>);
       }}
       onUploadFile={async (file: File, field: Field) => {
         try {
           // 1) El server valida el token y devuelve una signed upload URL scoped.
-          const signed = await createUploadUrlAction(token, field.key, file.name);
+          const signed = await actions.createUploadUrl(token, field.key, file.name);
           if (!signed.ok || !signed.path || !signed.uploadToken) {
             const error = signed.ok ? "No se pudo preparar la subida." : signed.error;
             console.error("[ApplicantForm] signed URL falló:", error);
@@ -71,7 +102,7 @@ export function ApplicantForm({
             return { ok: false as const, error: "No se pudo subir el archivo." };
           }
           // 3) Registrar metadatos del archivo ya subido.
-          const conf = await confirmUploadAction({
+          const conf = await actions.confirmUpload({
             token,
             path: signed.path,
             docType: field.key,
@@ -90,17 +121,17 @@ export function ApplicantForm({
         }
       }}
       onDeleteFile={async (path: string) => {
-        const res = await deleteDocumentAction(token, path);
+        const res = await actions.deleteDocument(token, path);
         return res.ok;
       }}
-      onSubmit={(a) => submitFormAction(token, a as Record<string, unknown>)}
+      onSubmit={(a) => actions.submit(token, a as Record<string, unknown>)}
       labels={{
         back: t("back"),
         continue: t("continue"),
-        submit: t("submit"),
+        submit: renewal ? t("renewalSubmit") : t("submit"),
         submitting: t("submitting"),
-        done: t("submittedTitle"),
-        doneBody: t("submittedBody"),
+        done: renewal ? t("renewalDoneTitle") : t("submittedTitle"),
+        doneBody: renewal ? t("renewalDoneBody") : t("submittedBody"),
         saving: t("saving"),
         saved: t("draftSaved"),
         saveError: t("saveError"),
@@ -119,7 +150,7 @@ export function ApplicantForm({
         numberTooBig: t.raw("errNumberMax"),
         returnCta: t("returnCta"),
         redirecting: t("redirecting"),
-        correctionBanner: t("correctionBanner"),
+        correctionBanner: renewal ? t("renewalBanner") : t("correctionBanner"),
         readOnlyNotice: t("readOnlyNotice"),
         expandImage: t("expandImage"),
         closeImage: t("closeImage"),

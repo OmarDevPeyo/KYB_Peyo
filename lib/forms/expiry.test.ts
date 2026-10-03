@@ -11,6 +11,9 @@ import {
   expiryWarnings,
   normalizeExpiry,
   parseExpiryDate,
+  proposedRenewalExpiry,
+  renewalDefinition,
+  renewalFieldKeys,
   resolveTrackedFields,
   type ExpiryCheck,
   type StoredExpiration,
@@ -318,4 +321,60 @@ test("expirationDiffers ignora el orden de las claves del jsonb", () => {
     expirationDiffers(labeled, { ...fromDb, field_label: { en: "License", es: "Licencia" } }),
     false,
   );
+});
+
+// ---------------- renovación ----------------
+
+test("renewalFieldKeys: archivo + fecha declarada, y anverso + reverso de DIDIT", () => {
+  const answers = { k_lic: file("lic.pdf"), k_lic_due: "2026-09-30", k_idf: file("f.jpg"), k_idb: file("b.jpg") };
+  const docs = renewalFieldKeys(base(), null, answers, ["lic", "idf", "lic", "idb", "nope"]);
+  assert.deepEqual(docs, [
+    { fieldId: "lic", fieldKey: "k_lic", marker: "date_field", keys: ["k_lic", "k_lic_due"] },
+    { fieldId: "idf", fieldKey: "k_idf", marker: "didit", keys: ["k_idf", "k_idb"] },
+  ]);
+  // Sin reverso subido, solo el anverso.
+  const front = renewalFieldKeys(base(), null, { k_idf: file("f.jpg") }, ["idf"]);
+  assert.deepEqual(front[0].keys, ["k_idf"]);
+});
+
+test("renewalDefinition: una sección, obligatoria y sin condiciones ni marcas", () => {
+  const def = base();
+  def.sections[0].fields[1].visibleIf = { field: "k_lic", op: "answered" };
+  def.internalFields = { title: "lic" };
+  const out = renewalDefinition(def, ["k_lic_due", "k_lic"], "Renovar");
+  assert.equal(out.sections.length, 1);
+  assert.deepEqual(out.sections[0].fields.map((f) => f.key), ["k_lic", "k_lic_due"]);
+  assert.ok(out.sections[0].fields.every((f) => f.required && !f.visibleIf && !f.expiry));
+  assert.equal(out.internalFields, undefined);
+  // No muta la definición original.
+  assert.ok(def.sections[0].fields[0].expiry);
+});
+
+test("proposedRenewalExpiry: fecha declarada o leída por DIDIT del documento nuevo", () => {
+  const lic = { fieldKey: "k_lic", marker: "date_field" as const, keys: ["k_lic", "k_lic_due"] };
+  assert.equal(proposedRenewalExpiry(lic, { k_lic_due: "2028-01-31" }, null), "2028-01-31");
+  assert.equal(proposedRenewalExpiry(lic, {}, null), null);
+
+  const idf = { fieldKey: "k_idf", marker: "didit" as const, keys: ["k_idf"] };
+  const checks = [
+    { feature: "id_verification", fieldKey: "k_idf", status: "passed", result: { id_verification: { expiration_date: "2031-05-01" } } },
+  ];
+  assert.equal(proposedRenewalExpiry(idf, {}, checks), "2031-05-01");
+  assert.equal(proposedRenewalExpiry(idf, {}, [{ ...checks[0], status: "error" }]), null);
+  assert.equal(proposedRenewalExpiry(idf, {}, null), null);
+});
+
+test("computeExpirations: tras renovar, un check anterior al documento nuevo no cuenta", () => {
+  const run = (uploaded: string | undefined) =>
+    computeExpirations({
+      requestDef: base(),
+      answers: { k_idf: file("idf-2.jpg") },
+      checks: [check("old", "k_idf", "2026-03-01", "2026-01-01T00:00:00Z")],
+      existing: [],
+      today: "2026-10-02",
+      uploadedAt: uploaded ? new Map([["req/idf-2.jpg", uploaded]]) : undefined,
+    })[0];
+  assert.equal(run(undefined).expires_on, "2026-03-01");
+  assert.equal(run("2026-10-01T00:00:00Z").expires_on, null);
+  assert.equal(run("2025-12-31T00:00:00Z").expires_on, "2026-03-01");
 });

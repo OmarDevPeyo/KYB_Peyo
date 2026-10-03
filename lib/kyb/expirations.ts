@@ -80,7 +80,7 @@ export function syncRequestExpirations(requestId: string): Promise<void> {
 
 async function syncBatch(ids: string[], liveDefs: Map<string, FormDefinition>): Promise<void> {
   const supabase = createServiceClient();
-  const [reqs, responses, checks, existing] = await Promise.all([
+  const [reqs, responses, checks, existing, documents] = await Promise.all([
     supabase.from("kyb_requests").select("id, form_id, form_definition, org_id").in("id", ids),
     supabase.from("kyb_form_responses").select("request_id, data").in("request_id", ids),
     // Solo la fecha: el resultado completo de DIDIT es grande y no hace falta.
@@ -92,8 +92,10 @@ async function syncBatch(ids: string[], liveDefs: Map<string, FormDefinition>): 
       .in("request_id", ids)
       .eq("feature", "id_verification"),
     supabase.from("document_expirations").select(EXPIRATION_COLUMNS).in("request_id", ids),
+    // Cuándo se subió cada archivo: un check de DIDIT anterior es de otro documento.
+    supabase.from("kyb_documents").select("storage_path, uploaded_at").in("request_id", ids),
   ]);
-  for (const r of [reqs, responses, checks, existing]) {
+  for (const r of [reqs, responses, checks, existing, documents]) {
     if (r.error) throw new Error(r.error.message);
   }
 
@@ -122,6 +124,9 @@ async function syncBatch(ids: string[], liveDefs: Map<string, FormDefinition>): 
     (e) => e.request_id,
   );
 
+  const uploadedAt = new Map(
+    (documents.data ?? []).map((d) => [d.storage_path as string, d.uploaded_at as string] as const),
+  );
   const today = todayUtc();
   const now = new Date().toISOString();
   const upserts: Record<string, unknown>[] = [];
@@ -143,6 +148,7 @@ async function syncBatch(ids: string[], liveDefs: Map<string, FormDefinition>): 
       checks: (checksOf.get(req.id) ?? []).map((c) => c.check),
       existing: stored,
       today,
+      uploadedAt,
     });
 
     const storedById = new Map(stored.map((s) => [s.field_id, s] as const));

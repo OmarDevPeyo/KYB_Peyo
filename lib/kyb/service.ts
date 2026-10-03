@@ -10,7 +10,7 @@ import { recordCheckCharge } from "@/lib/didit/costs";
 import { notifyClient } from "@/lib/kyb/webhook";
 import { liveDefinitionFor, resolveRequestDefinition } from "@/lib/forms/store";
 import { pickRequestForm, type FormCandidate, type FormChoice } from "@/lib/forms/formChoice";
-import { dropForeignFileRefs, isOwnedPath } from "@/lib/kyb/storagePaths";
+import { dropForeignFileRefs, isOwnedPath, mimeAllowed } from "@/lib/kyb/storagePaths";
 import { reachableFields } from "@/lib/forms/logic";
 import { formDefinitionSchema, type FormDefinition } from "@/lib/forms/definition";
 import { resolveRequestSummary, type RequestSummary } from "@/lib/forms/internalFields";
@@ -646,6 +646,46 @@ export async function deleteStoredObject(storagePath: string): Promise<void> {
   await supabase.storage.from(DOCUMENTS_BUCKET).remove([storagePath]);
 }
 
+/**
+ * Contrasta un archivo ya subido por signed URL con los límites de su pregunta
+ * (tamaño y tipo). Es el primer y único momento en que el server puede mirarlo:
+ * el mime y el tamaño se leen del objeto real, los que manda el cliente no
+ * prueban nada. Si no pasa, se borra el objeto: si no, queda ocupando el bucket
+ * sin ninguna fila que lo referencie, y nadie lo limpia.
+ */
+export async function checkStoredUpload(input: {
+  path: string;
+  filename: string;
+  /** Configuración de archivo de la pregunta (de la definición de la solicitud). */
+  file: { accept?: string[]; maxSizeMB: number } | undefined;
+  /** Contexto para el log. */
+  context: string;
+}): Promise<{ ok: true; mime: string | null; size: number | null } | { ok: false; error: string }> {
+  const stored = await readStoredObject(input.path);
+  if (!stored) {
+    console.warn(`[upload] ${input.context} objeto inexistente: ${input.path}`);
+    return { ok: false, error: "No se encontró el archivo subido." };
+  }
+  const cfg = input.file;
+  const maxBytes = cfg ? cfg.maxSizeMB * 1024 * 1024 : null;
+  const tooBig = maxBytes != null && stored.size != null && stored.size > maxBytes;
+  const badType = !mimeAllowed(cfg?.accept, stored.mime, input.filename);
+  if (tooBig || badType) {
+    await deleteStoredObject(input.path);
+    console.warn(
+      `[upload] rechazado ${input.context} mime=${stored.mime} size=${stored.size} ` +
+        `tooBig=${tooBig} badType=${badType}`,
+    );
+    return {
+      ok: false,
+      error: tooBig
+        ? `El archivo supera ${cfg?.maxSizeMB} MB.`
+        : "Ese tipo de archivo no está permitido.",
+    };
+  }
+  return { ok: true, mime: stored.mime, size: stored.size };
+}
+
 /** Registra los metadatos de un documento subido a Storage. */
 export async function recordDocument(input: {
   requestId: string;
@@ -654,6 +694,8 @@ export async function recordDocument(input: {
   filename: string;
   mime?: string | null;
   size?: number | null;
+  /** Ronda de renovación a la que pertenece el archivo (document_renewals). */
+  renewalId?: string | null;
 }) {
   const supabase = createServiceClient();
   await supabase.from("kyb_documents").insert({
@@ -663,6 +705,7 @@ export async function recordDocument(input: {
     filename: input.filename,
     mime: input.mime ?? null,
     size: input.size ?? null,
+    ...(input.renewalId ? { renewal_id: input.renewalId } : {}),
   });
 }
 

@@ -14,6 +14,8 @@ import {
   type ExpirationItem,
 } from "@/components/admin/ExpirationList";
 import { addDays, EXPIRY_SOON_DAYS, expiryStatus, todayUtc } from "@/lib/forms/expiry";
+import { resolveText, type LocalizedText } from "@/lib/forms/definition";
+import { RenewalLinkPanel } from "@/components/admin/RenewalLinkPanel";
 import { EXPIRATION_COLUMNS } from "@/lib/kyb/expirations";
 
 export const dynamic = "force-dynamic";
@@ -281,11 +283,21 @@ export default async function ExpirationsPage({
                     <div className="border-t border-border bg-surface-2/40">
                       <ExpirationList items={docs} today={today} />
                       <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2.5">
+                        <RenewalLinkPanel
+                          requestId={r.request_id}
+                          blocked={r.open_renewal_state === "submitted"}
+                          documents={docs.map((d) => ({
+                            fieldId: d.field_id,
+                            label: resolveText(d.field_label as LocalizedText, locale) || d.field_key,
+                            status: expiryStatus(d.expires_on, today),
+                            date: d.expires_on ? formatExpiryDate(d.expires_on, locale) : null,
+                          }))}
+                        />
                         <Link
                           href={`/admin/requests/${r.request_id}`}
                           className={buttonClass({ variant: "outline", size: "sm" })}
                         >
-                          {t("viewRequest")}
+                          {r.open_renewal_state === "submitted" ? t("reviewRenewal") : t("viewRequest")}
                         </Link>
                         {r.last_email_sent_at && (
                           <span className="text-xs text-muted">

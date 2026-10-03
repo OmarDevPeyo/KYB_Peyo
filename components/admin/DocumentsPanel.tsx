@@ -139,8 +139,15 @@ export function DocumentsPanel({ groups }: { groups: DocGroup[] }) {
                   >
                     <FileTypeIcon kind={kind} className="shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-foreground" title={d.filename}>
-                        {d.filename}
+                      <p className="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                        <span className="truncate" title={d.filename}>
+                          {d.filename}
+                        </span>
+                        {d.tag && (
+                          <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
+                            {d.tag}
+                          </span>
+                        )}
                       </p>
                       <p className="truncate text-xs text-muted">{meta}</p>
                     </div>

@@ -83,6 +83,8 @@ export type DocRow = {
    * UTC mientras el navegador usa la zona del analista.
    */
   uploadedAtLabel: string | null;
+  /** Etiqueta ya traducida: versión anterior o subida de una renovación. */
+  tag?: string | null;
 };
 
 /** Documentos de una misma pregunta. `question === null` ⇒ grupo de huérfanos. */

@@ -7,6 +7,7 @@ import { ExpiryOverrideEditor } from "@/components/admin/ExpiryOverrideEditor";
 /** Lo que la lista necesita de una fila de `document_expirations`. */
 export interface ExpirationItem {
   id: string;
+  field_id: string;
   field_key: string;
   field_label: unknown;
   source: string;

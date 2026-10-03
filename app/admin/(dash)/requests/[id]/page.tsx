@@ -35,6 +35,8 @@ import { formatCost } from "@/lib/i18n-ai/pricing";
 import { ExpirationList, type ExpirationItem } from "@/components/admin/ExpirationList";
 import { todayUtc } from "@/lib/forms/expiry";
 import { EXPIRATION_COLUMNS } from "@/lib/kyb/expirations";
+import { RENEWAL_COLUMNS, type RenewalRow } from "@/lib/kyb/renewals";
+import { RenewalCard } from "@/components/admin/RenewalCard";
 
 export const dynamic = "force-dynamic";
 // Las acciones de este detalle pueden llamar a DIDIT (re-verificar, seleccionar
@@ -83,11 +85,12 @@ export default async function RequestDetail({
     { data: aml },
     { data: diditCharges },
     { data: expirations },
+    { data: renewals },
   ] = await Promise.all([
     supabase.from("kyb_form_responses").select("data").eq("request_id", id).maybeSingle(),
     supabase
       .from("kyb_documents")
-      .select("id, doc_type, filename, storage_path, mime, size, uploaded_at")
+      .select("id, doc_type, filename, storage_path, mime, size, uploaded_at, renewal_id")
       .eq("request_id", id)
       // Sin `order` Postgres devuelve un orden arbitrario: dentro de cada
       // pregunta los archivos deben salir en el orden en que se subieron.
@@ -109,6 +112,12 @@ export default async function RequestDetail({
       .select(EXPIRATION_COLUMNS)
       .eq("request_id", id)
       .order("created_at"),
+    // Rondas de renovación (columnas explícitas: el hash del token no se expone).
+    supabase
+      .from("document_renewals")
+      .select(RENEWAL_COLUMNS)
+      .eq("request_id", id)
+      .order("round", { ascending: false }),
   ]);
   const diditCost = diditCharges?.length
     ? {
@@ -221,13 +230,38 @@ export default async function RequestDetail({
           timeStyle: "short",
         }).format(d);
   };
+  // Renovaciones: un archivo que ya no está en las respuestas es la versión
+  // anterior de un documento renovado; uno subido en una ronda abierta o
+  // rechazada se rotula con su ronda.
+  const renewalRows = (renewals ?? []) as unknown as RenewalRow[];
+  const renewalById = new Map(renewalRows.map((r) => [r.id, r] as const));
+  const renewedKeys = new Set(
+    renewalRows.filter((r) => r.state === "accepted").flatMap((r) => r.keys),
+  );
+  const currentPaths = new Set(
+    Object.values(formData).flatMap((v) => fileRefsOf(v).map((r) => r.path)),
+  );
+  const docTag = (d: { doc_type: string; storage_path: string; renewal_id?: string | null }) => {
+    if (currentPaths.has(d.storage_path)) return null;
+    const round = d.renewal_id ? renewalById.get(d.renewal_id) : undefined;
+    if (round && round.state !== "accepted") {
+      return tExp("docTagRenewal", {
+        round: round.round,
+        state: tExp(`renewalState_${round.state}`),
+      });
+    }
+    return round || renewedKeys.has(d.doc_type) ? tExp("docTagPrevious") : null;
+  };
+
   const toDocRow = (d: {
     id: string;
+    doc_type: string;
     filename: string;
     storage_path: string;
     mime: string | null;
     size: number | null;
     uploaded_at: string | null;
+    renewal_id?: string | null;
   }): DocRow => ({
     id: d.id,
     filename: d.filename,
@@ -237,6 +271,7 @@ export default async function RequestDetail({
     sizeLabel: formatBytes(d.size, locale),
     uploadedAt: d.uploaded_at ?? null,
     uploadedAtLabel: fmtDocDate(d.uploaded_at),
+    tag: docTag(d),
   });
 
   const docList = docs ?? [];
@@ -397,7 +432,15 @@ export default async function RequestDetail({
           <p className="text-sm text-muted">{t("noChecks")}</p>
         )}
         {(aml ?? []).map((c, i) => {
-          const image = c.field_key ? imageForKey(c.field_key) : undefined;
+          // `aml` viene del más nuevo al más viejo: un check con otro más nuevo
+          // del mismo documento describe la versión anterior (renovación).
+          const superseded =
+            c.feature === "id_verification" &&
+            (aml ?? [])
+              .slice(0, i)
+              .some((n) => n.feature === c.feature && n.field_key === c.field_key);
+          const image =
+            c.field_key && !superseded ? imageForKey(c.field_key) : undefined;
           const field = c.field_key ? fieldByKey.get(c.field_key) : undefined;
           const trigger = c.field_key ? triggerByKey.get(c.field_key) : undefined;
           const refImages = (field?.review?.refKeys ?? [])
@@ -412,6 +455,7 @@ export default async function RequestDetail({
               sectionTitle={trigger?.section}
               fieldLabel={trigger?.question}
               requestId={id}
+              superseded={superseded}
             />
           );
         })}
@@ -427,6 +471,17 @@ export default async function RequestDetail({
               today={todayUtc()}
             />
           </Card>
+          {(status === "approved" || (renewals ?? []).length > 0) && (
+            <div className="mt-3">
+              <RenewalCard
+                requestId={id}
+                renewals={(renewals ?? []) as unknown as RenewalRow[]}
+                expirations={(expirations ?? []) as unknown as ExpirationItem[]}
+                today={todayUtc()}
+                approved={status === "approved"}
+              />
+            </div>
+          )}
         </Section>
       )}
 

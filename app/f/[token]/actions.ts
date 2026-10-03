@@ -9,8 +9,7 @@ import {
   submitRequest,
   runVerifications,
   recordDocument,
-  readStoredObject,
-  deleteStoredObject,
+  checkStoredUpload,
   deleteDocument,
   isTerminal,
   DOCUMENTS_BUCKET,
@@ -18,7 +17,7 @@ import {
 import { notifyClient } from "@/lib/kyb/webhook";
 import { syncRequestExpirations } from "@/lib/kyb/expirations";
 import { createServiceClient } from "@/lib/supabase/service";
-import { documentPath, isOwnedPath, mimeAllowed } from "@/lib/kyb/storagePaths";
+import { documentPath, isOwnedPath } from "@/lib/kyb/storagePaths";
 import { kybSubmitSchema } from "@/lib/forms/schema";
 import { resolveRequestDefinition } from "@/lib/forms/store";
 import type { FormDefinition } from "@/lib/forms/definition";
@@ -205,15 +204,6 @@ export async function confirmUploadAction(input: {
     return { ok: false, error: "Ruta inválida." };
   }
 
-  // El archivo subió por signed URL, así que este es el primer y único momento
-  // en que el server puede mirarlo. `input.mime`/`input.size` los manda el
-  // cliente y no prueban nada: se leen del objeto real y se ignoran los suyos.
-  const stored = await readStoredObject(input.path);
-  if (!stored) {
-    console.warn(`[confirmUploadAction] objeto inexistente: ${input.path}`);
-    return { ok: false, error: "No se encontró el archivo subido." };
-  }
-
   // Límites declarados POR CAMPO en la definición congelada de la solicitud
   // (la misma que valida el envío). Hasta ahora solo los aplicaba el navegador.
   const definition = await resolveRequestDefinition(
@@ -225,25 +215,13 @@ export async function confirmUploadAction(input: {
     .flatMap((s) => s.fields)
     .find((f) => f.key === input.docType)?.file;
 
-  const maxBytes = cfg ? cfg.maxSizeMB * 1024 * 1024 : null;
-  const tooBig = maxBytes != null && stored.size != null && stored.size > maxBytes;
-  const badType = !mimeAllowed(cfg?.accept, stored.mime, input.filename);
-
-  if (tooBig || badType) {
-    // Se borra el objeto: si no, queda ocupando el bucket sin ninguna fila que
-    // lo referencie, y nadie lo limpia.
-    await deleteStoredObject(input.path);
-    console.warn(
-      `[confirmUploadAction] rechazado request=${r.req.id} campo=${input.docType} ` +
-        `mime=${stored.mime} size=${stored.size} tooBig=${tooBig} badType=${badType}`,
-    );
-    return {
-      ok: false,
-      error: tooBig
-        ? `El archivo supera ${cfg?.maxSizeMB} MB.`
-        : "Ese tipo de archivo no está permitido.",
-    };
-  }
+  const stored = await checkStoredUpload({
+    path: input.path,
+    filename: input.filename,
+    file: cfg,
+    context: `request=${r.req.id} campo=${input.docType}`,
+  });
+  if (!stored.ok) return stored;
 
   try {
     await recordDocument({

@@ -8,7 +8,7 @@ import type {
   LocalizedText,
 } from "./definition.ts";
 import { reachableFields, type Answers } from "./logic.ts";
-import { firstFileRef, isBackSide } from "../didit/plan.ts";
+import { firstFileRef, isBackSide, planDiditTasks } from "../didit/plan.ts";
 import { nodeOf } from "../didit/summary.ts";
 
 /** Ventana de "por vencer", en días. */
@@ -286,14 +286,24 @@ export interface ExpirationRow {
   expired_notified_at: string | null;
 }
 
-/** Fecha de vencimiento que leyó DIDIT, del check más nuevo que la tenga. */
+/**
+ * Fecha de vencimiento que leyó DIDIT, del check más nuevo que la tenga. Si se
+ * sabe cuándo se subió el documento, solo cuentan los checks posteriores: tras
+ * una renovación, un check viejo describe el documento anterior.
+ */
 function diditExpiry(
   checks: ExpiryCheck[],
   fieldKey: string,
+  uploadedAt: string | undefined,
 ): { date: string; checkId: string } | null {
+  const after = uploadedAt ? Date.parse(uploadedAt) : NaN;
   const candidates = checks
     .filter(
-      (c) => c.feature === "id_verification" && c.field_key === fieldKey && c.status !== "error",
+      (c) =>
+        c.feature === "id_verification" &&
+        c.field_key === fieldKey &&
+        c.status !== "error" &&
+        (Number.isNaN(after) || Date.parse(c.created_at) >= after),
     )
     .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
   for (const c of candidates) {
@@ -321,8 +331,10 @@ export function computeExpirations(input: {
   checks: ExpiryCheck[];
   existing: StoredExpiration[];
   today: string;
+  /** Ruta de Storage → cuándo se subió (kyb_documents.uploaded_at). */
+  uploadedAt?: Map<string, string>;
 }): ExpirationRow[] {
-  const { requestDef, liveDef, answers, checks, existing, today } = input;
+  const { requestDef, liveDef, answers, checks, existing, today, uploadedAt } = input;
   const reached = new Set(reachableFields(requestDef, answers).map((f) => f.id));
   const prevById = new Map(existing.map((e) => [e.field_id, e] as const));
 
@@ -337,7 +349,7 @@ export function computeExpirations(input: {
     let auto: string | null = null;
     let checkId: string | null = null;
     if (marker.source === "didit") {
-      const read = diditExpiry(checks, field.key);
+      const read = diditExpiry(checks, field.key, uploadedAt?.get(doc.path));
       if (read) {
         auto = read.date;
         checkId = read.checkId;
@@ -412,4 +424,96 @@ export function expirationDiffers(
   return (Object.keys(desired) as (keyof ExpirationRow)[]).some(
     (k) => stableJson(desired[k]) !== stableJson(stored[k]),
   );
+}
+
+// ------------------------------------------------------------
+// Renovación
+// ------------------------------------------------------------
+
+export interface RenewalDoc {
+  fieldId: string;
+  fieldKey: string;
+  marker: FieldExpiry["source"];
+  /** Keys de respuesta que el link puede escribir para este documento. */
+  keys: string[];
+}
+
+/**
+ * Qué puede escribir una renovación, por documento controlado: el archivo, su
+ * reverso si lo tenía (mismo emparejamiento que el plan de DIDIT) y la
+ * pregunta de fecha enlazada. Ids que no son documentos controlados se ignoran.
+ */
+export function renewalFieldKeys(
+  requestDef: FormDefinition,
+  liveDef: FormDefinition | null | undefined,
+  answers: Answers,
+  fieldIds: string[],
+): RenewalDoc[] {
+  const tracked = new Map(
+    resolveTrackedFields(requestDef, liveDef).map((t) => [t.field.id, t] as const),
+  );
+  const plan = planDiditTasks(requestDef, answers);
+  const out: RenewalDoc[] = [];
+  for (const id of new Set(fieldIds)) {
+    const t = tracked.get(id);
+    if (!t) continue;
+    const keys = [t.field.key];
+    if (t.marker.source === "didit") {
+      const task = plan.tasks.find(
+        (x) => x.feature === "id_verification" && x.fieldKey === t.field.key,
+      );
+      if (task?.feature === "id_verification" && task.backKey) keys.push(task.backKey);
+    } else if (t.dateField) {
+      keys.push(t.dateField.key);
+    }
+    out.push({ fieldId: id, fieldKey: t.field.key, marker: t.marker.source, keys });
+  }
+  return out;
+}
+
+/**
+ * Formulario que ve el solicitante en una renovación: una sola sección con las
+ * preguntas a renovar, en el orden del formulario, todas obligatorias y sin
+ * condiciones (la renovación no recorre el resto del formulario).
+ */
+export function renewalDefinition(
+  def: FormDefinition,
+  keys: string[],
+  title: LocalizedText,
+): FormDefinition {
+  const wanted = new Set(keys);
+  const fields = fieldsOf(def)
+    .filter((f) => wanted.has(f.key))
+    .map((f) => {
+      const g: Field = { ...f, required: true };
+      delete g.visibleIf;
+      delete g.expiry;
+      delete g.review;
+      return g;
+    });
+  const out: FormDefinition = {
+    ...def,
+    sections: [{ id: "renewal", title, fields }],
+  };
+  delete out.internalFields;
+  return out;
+}
+
+/**
+ * Fecha que dejaría una renovación si se acepta (para la revisión del
+ * analista): la declarada en la ronda o la que leyó DIDIT del documento nuevo.
+ */
+export function proposedRenewalExpiry(
+  doc: { fieldKey: string; marker: FieldExpiry["source"]; keys: string[] },
+  answers: Answers,
+  checks: { feature: string; fieldKey: string | null; status: string; result: unknown }[] | null,
+): string | null {
+  if (doc.marker === "date_field") {
+    const dateKey = doc.keys.find((k) => k !== doc.fieldKey);
+    return dateKey ? parseExpiryDate(answers[dateKey]) : null;
+  }
+  const check = (checks ?? []).find(
+    (c) => c.feature === "id_verification" && c.fieldKey === doc.fieldKey && c.status !== "error",
+  );
+  return check ? parseExpiryDate(nodeOf("id_verification", check.result)?.expiration_date) : null;
 }

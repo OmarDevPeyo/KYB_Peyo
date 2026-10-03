@@ -139,6 +139,24 @@ export async function loadOwnedExpiration(
   return canAccessOrg(analyst, orgId) ? row : null;
 }
 
+/** Ronda de renovación (document_renewals), de la org de su solicitud. */
+export async function loadOwnedRenewal(
+  analyst: Analyst,
+  renewalId: string,
+  columns = "id",
+): Promise<Row | null> {
+  if (!isUuid(renewalId)) return null;
+  const { data } = await createServiceClient()
+    .from("document_renewals")
+    .select(`request_id, ${columns}, req:kyb_requests!inner(org_id)`)
+    .eq("id", renewalId)
+    .maybeSingle();
+  const row = data as Row | null;
+  if (!row) return null;
+  const orgId = one(row.req as { org_id: string } | { org_id: string }[])?.org_id;
+  return canAccessOrg(analyst, orgId) ? row : null;
+}
+
 /**
  * Documento por su clave de Storage. Solo se firman claves registradas en
  * `kyb_documents` de una solicitud de la org del analista.

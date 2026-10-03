@@ -1,5 +1,7 @@
 import { getLocale, getTranslations } from "next-intl/server";
 import { getRequestByToken } from "@/lib/kyb/service";
+import { resolveRenewal } from "@/lib/kyb/renewals";
+import { expiryStatus, todayUtc } from "@/lib/forms/expiry";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getFormForRequest, resolveRequestDefinition } from "@/lib/forms/store";
 import { reachableSections } from "@/lib/forms/logic";
@@ -44,7 +46,59 @@ export default async function FormPage({
   const req = await getRequestByToken(token);
 
   if (!req) {
-    return <Notice title={t("invalidTitle")} body={t("invalidBody")} />;
+    // ¿Link de renovación? Tiene su propio token (document_renewals).
+    const renewal = await resolveRenewal(token);
+    if (!renewal) return <Notice title={t("invalidTitle")} body={t("invalidBody")} />;
+    if (!renewal.ok) {
+      const key =
+        renewal.reason === "received"
+          ? "renewalReceived"
+          : renewal.reason === "expired"
+            ? "renewalExpired"
+            : "renewalInvalid";
+      return <Notice title={t(`${key}Title`)} body={t(`${key}Body`)} />;
+    }
+    const locale = await getLocale();
+    const today = todayUtc();
+    const fmt = (d: string) =>
+      new Intl.DateTimeFormat(locale, { dateStyle: "long", timeZone: "UTC" }).format(
+        new Date(`${d}T00:00:00Z`),
+      );
+    // Nota en la pregunta del documento (cuándo venció o vence) y en sus
+    // acompañantes: la fecha de vencimiento nueva o el reverso.
+    const notes = renewal.renewal.fields.flatMap((f) =>
+      f.keys.map((key) => ({
+        key,
+        note:
+          key !== f.fieldKey
+            ? t(f.marker === "date_field" ? "renewalNoteDate" : "renewalNoteBack")
+            : f.expiresOn
+              ? t(
+                  expiryStatus(f.expiresOn, today) === "expired"
+                    ? "renewalNoteExpired"
+                    : "renewalNoteExpiring",
+                  { date: fmt(f.expiresOn) },
+                )
+              : t("renewalNoteNoDate"),
+      })),
+    );
+    return (
+      <>
+        <AppHeader />
+        <main className="mx-auto w-full max-w-2xl flex-1 p-6">
+          <ApplicantForm
+            token={token}
+            definition={publicDefinition(renewal.renewalDef)}
+            locale={locale}
+            initialAnswers={renewal.renewal.answers ?? {}}
+            mode="correction"
+            corrections={notes}
+            anchorSectionId={renewal.renewalDef.sections[0]?.id}
+            flow="renewal"
+          />
+        </main>
+      </>
+    );
   }
   if (req.status === "expired") {
     return <Notice title={t("expiredTitle")} body={t("expiredBody")} />;

@@ -202,7 +202,8 @@ Query params: `status`, `external_ref`, `limit` (def 20, máx 100), `offset` (de
   días) | `valid` | `unknown`; el día del vencimiento todavía es `expiring`.
   **Un documento vencido no cambia el `status` de la solicitud**: una aprobada
   sigue `approved`. Es un aviso para que decidas tú (§8, verificación vs
-  activación).
+  activación). Tras una renovación aceptada, `aml[]` puede traer **varias**
+  verificaciones de identidad del mismo documento: la más nueva va primero.
 
 `404 { "error": "not_found" }` si la solicitud no existe o no es tuya.
 
@@ -300,12 +301,17 @@ Query: `?expires_in=<segundos>` (60–86400, default 3600).
 {
   "documents": [
     { "doc_type": "general", "filename": "acta.pdf", "mime": "application/pdf",
-      "size": 182734, "uploaded_at": "…", "url": "https://…firmada…" }
+      "size": 182734, "uploaded_at": "…", "url": "https://…firmada…", "current": true }
   ]
 }
 ```
 
 Las `url` son firmadas y **caducan**; genera una consulta nueva cuando las necesites.
+
+`current` dice si el archivo es el que está **hoy** en las respuestas. Cuando se
+renueva un documento vencido (ver `document.renewed` en §6), el anterior se conserva
+como historial con `current: false`. Lo que el usuario sube en una renovación que
+nuestro analista todavía no aceptó **no se lista**: aparece recién al aceptarse.
 
 `mime` y `size` son los que **observa el servidor** en el archivo almacenado, no los
 que declara el navegador de quien sube. Si tu lado decidía algo con esos valores, ahora
@@ -462,6 +468,7 @@ Hacemos `POST` a tu endpoint cuando:
 - `request.expired` — el link/solicitud **venció** sin que el usuario terminara (estado `expired`; solo aplica a solicitudes aún **no enviadas**). Detectado por el mismo barrido programado, así que llega aunque el usuario nunca vuelva a abrir el link. Para reenviarle una invitación nueva, llama a `POST /:id/invitation` (§4.7), que revive la solicitud conservando el borrador.
   - **Timing:** `request.expired` se emite **después** de vencer; el heads-up previo es `request.expiring`. El acceso del usuario al link se corta **en tiempo real** en el instante del vencimiento (`expires_at`), independientemente del barrido. Lo que puede llegar con retraso es solo la **notificación**: con el barrido diario, ambos eventos llegan dentro de su ventana (hasta ~24 h de resolución). Si necesitas más precisión, sube la frecuencia del barrido (requiere plan que lo permita).
 - `document.expired` — venció un **documento** con vencimiento controlado (carnet, licencia) de una solicitud **aprobada**. Se dispara **una sola vez** por documento y fecha, desde el barrido diario. El body incluye `document` (`{ field_id, field_key, label, expires_on, source }`). **La solicitud sigue `approved`**: el evento es un aviso. Si se corrige la fecha o llega un documento nuevo que vuelve a vencer, puede llegar otro `document.expired` para la misma pregunta.
+- `document.renewed` — nuestro analista **aceptó** documentos renovados de una solicitud **aprobada** (el usuario los subió por un link de renovación). El body incluye `renewal` (`{ round, accepted_at, documents: [{ field_id, field_key, previous_expires_on, expires_on }] }`). Las respuestas y `documentExpirations` ya reflejan el documento nuevo. **La solicitud sigue `approved`**.
 
 ### Request que recibes
 Cabeceras:
