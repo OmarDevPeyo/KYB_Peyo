@@ -1,5 +1,6 @@
 import "server-only";
 import { env } from "@/lib/env";
+import { CAPTCHA_PAUSED } from "./captcha";
 
 const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const TIMEOUT_MS = 8_000;
@@ -9,12 +10,12 @@ const TIMEOUT_MS = 8_000;
  * correo arma la app (Olvidé mi contraseña): ahí Supabase no ve el captcha.
  * El login sigue validándolo Supabase (captcha nativo).
  *
- * Sin `TURNSTILE_SECRET_KEY` no se verifica (captcha apagado del lado del
- * server; queda el rate limit).
+ * Sin `TURNSTILE_SECRET_KEY`, o con la pausa de lib/auth/captcha.ts, no se
+ * verifica (captcha apagado del lado del server; queda el rate limit).
  */
 export async function verifyTurnstile(token: string | null, ip: string | null): Promise<boolean> {
   const secret = env.turnstileSecretKey();
-  if (!secret) return true;
+  if (CAPTCHA_PAUSED || !secret) return true;
   if (!token) return false;
   try {
     const res = await fetch(VERIFY_URL, {

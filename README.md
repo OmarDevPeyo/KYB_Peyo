@@ -32,7 +32,8 @@ Tres superficies sobre una app Next.js (App Router) + Supabase:
 npm install
 cp .env.example .env.local          # completar claves (ver abajo)
 
-# captcha local (Turnstile, clave secreta de PRUEBA de Cloudflare; ver supabase/config.toml)
+# captcha local (Turnstile, clave secreta de PRUEBA de Cloudflare; ver supabase/config.toml).
+# Hoy está EN PAUSA en todo el panel: CAPTCHA_PAUSED en lib/auth/captcha.ts.
 echo "SUPABASE_AUTH_CAPTCHA_SECRET=1x0000000000000000000000000000000AA" > supabase/.env
 
 npm run db:start                    # levanta Supabase (Docker). Imprime ANON_KEY / SERVICE_ROLE_KEY

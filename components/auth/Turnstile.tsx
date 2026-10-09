@@ -4,6 +4,7 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { useLocale } from "next-intl";
 import { useTheme } from "next-themes";
 import { publicEnv } from "@/lib/env.public";
+import { CAPTCHA_PAUSED } from "@/lib/auth/captcha";
 
 /**
  * Widget de Cloudflare Turnstile. En el login valida el token Supabase Auth
@@ -12,7 +13,8 @@ import { publicEnv } from "@/lib/env.public";
  * que es pública. En "Olvidé mi contraseña" lo valida la app
  * (lib/auth/turnstile.ts), porque el correo lo manda ella.
  *
- * Sin `NEXT_PUBLIC_TURNSTILE_SITE_KEY` no renderiza nada (captcha apagado).
+ * Sin `NEXT_PUBLIC_TURNSTILE_SITE_KEY` o con la pausa de lib/auth/captcha.ts
+ * no renderiza nada (captcha apagado).
  */
 
 type TurnstileApi = {
@@ -52,7 +54,7 @@ export interface TurnstileHandle {
   reset: () => void;
 }
 
-export const turnstileEnabled = () => Boolean(publicEnv.turnstileSiteKey());
+export const turnstileEnabled = () => !CAPTCHA_PAUSED && Boolean(publicEnv.turnstileSiteKey());
 
 export function Turnstile({
   onToken,
@@ -62,7 +64,7 @@ export function Turnstile({
   onToken: (token: string | null) => void;
   ref?: Ref<TurnstileHandle>;
 }) {
-  const siteKey = publicEnv.turnstileSiteKey();
+  const siteKey = turnstileEnabled() ? publicEnv.turnstileSiteKey() : "";
   const container = useRef<HTMLDivElement>(null);
   const widgetId = useRef<string | null>(null);
   // El callback cambia en cada render del padre; el widget se crea una vez.
