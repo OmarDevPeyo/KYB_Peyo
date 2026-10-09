@@ -13,10 +13,19 @@ import { setFirstPasswordAction } from "./actions";
  * Los dos pasos del primer ingreso: elegir la contraseña propia y, recién
  * después, la oferta de activar la verificación en dos pasos (opcional).
  */
-export function WelcomeFlow({ email, isAdmin }: { email: string; isAdmin: boolean }) {
+export function WelcomeFlow({
+  email,
+  isAdmin,
+  initialStep,
+}: {
+  email: string;
+  isAdmin: boolean;
+  initialStep: "password" | "mfa";
+}) {
   const t = useTranslations("auth");
   const tAll = useTranslations();
-  const [step, setStep] = useState<"password" | "mfa">("password");
+  const [step, setStep] = useState(initialStep);
+  const [justSaved, setJustSaved] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +47,7 @@ export function WelcomeFlow({ email, isAdmin }: { email: string; isAdmin: boolea
     }
     setPassword("");
     setConfirm("");
+    setJustSaved(true);
     setStep("mfa");
   }
 
@@ -46,7 +56,7 @@ export function WelcomeFlow({ email, isAdmin }: { email: string; isAdmin: boolea
       <>
         <AuthHeading title={t("welcomeMfaTitle")} subtitle={t("welcomeMfaBody")} />
         <div>
-          <AuthAlert tone="success">{t("welcomePasswordSaved")}</AuthAlert>
+          {justSaved && <AuthAlert tone="success">{t("welcomePasswordSaved")}</AuthAlert>}
           {isAdmin && <AuthAlert tone="info">{t("welcomeMfaAdmin")}</AuthAlert>}
           <Link href="/admin/security?mfa=1" className={authButtonCls}>
             <ShieldCheck size={18} aria-hidden />

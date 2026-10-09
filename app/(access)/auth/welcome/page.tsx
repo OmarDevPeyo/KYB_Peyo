@@ -6,8 +6,11 @@ export const dynamic = "force-dynamic";
 
 /**
  * Primer ingreso con la contraseña temporal que llegó por correo: la persona
- * elige la suya y después se le ofrece activar el 2FA. Solo para la sesión en
- * estado `password_setup`; el resto va a donde le corresponde.
+ * elige la suya y después se le ofrece activar el 2FA.
+ *
+ * Con la cuenta ya activa y sin 2FA se muestra directo la oferta: guardar la
+ * contraseña renueva la cookie de sesión y Next vuelve a renderizar esta
+ * página, que no puede mandarla al panel antes de ofrecerle el 2FA.
  */
 export default async function WelcomePage() {
   const s = await getAuthState();
@@ -21,10 +24,17 @@ export default async function WelcomePage() {
     case "no_account":
       redirect(`${await loginPathFor(null)}?error=forbidden`);
     case "active":
-      redirect("/admin");
+      if (s.analyst?.mfaEnabled) redirect("/admin");
+      break;
     case "password_setup":
       break;
   }
 
-  return <WelcomeFlow email={s.email ?? ""} isAdmin={s.role === "admin"} />;
+  return (
+    <WelcomeFlow
+      email={s.email ?? ""}
+      isAdmin={s.role === "admin"}
+      initialStep={s.state.kind === "active" ? "mfa" : "password"}
+    />
+  );
 }

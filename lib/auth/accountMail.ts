@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "crypto";
 import { env } from "@/lib/env";
 import { applicantMailMode, sendEmail } from "@/lib/mail/send";
 import {
@@ -49,7 +50,14 @@ async function authLink(
   params: { type: "recovery"; email: string } | { type: "email_change_new"; email: string; newEmail: string },
 ): Promise<string | null> {
   const { data, error } = await createServiceClient().auth.admin.generateLink(params);
-  const token = data?.properties?.hashed_token;
+  const props = data?.properties;
+  // En email_change_new, GoTrue devuelve el hash calculado con el email VIEJO,
+  // pero guarda (y verifica) sha224(email nuevo + código): con el que devuelve,
+  // verifyOtp responde otp_expired. Se arma con el código, como lo guarda.
+  const token =
+    params.type === "email_change_new" && props?.email_otp
+      ? createHash("sha224").update(params.newEmail + props.email_otp).digest("hex")
+      : props?.hashed_token;
   if (error || !token) {
     console.error(`[accountMail] generateLink ${params.type} falló:`, error?.message ?? "sin token");
     return null;
