@@ -5,8 +5,8 @@ import type { Role } from "./tenantRules";
 
 /**
  * Lectura de cuentas para la página Usuarios (solo admin). Junta la fila de
- * `analysts`, su org y los datos de Supabase Auth (invitación pendiente,
- * último ingreso, 2FA). Todo con service role: quien llama ya pasó
+ * `analysts`, su org y los datos de Supabase Auth (si ya entró, último
+ * ingreso, 2FA). Todo con service role: quien llama ya pasó
  * requireAdmin.
  */
 
@@ -23,10 +23,11 @@ export interface AccountRow {
   suspendedAt: string | null;
   contactId: string | null;
   contactEmail: string | null;
-  /** Invitación sin aceptar: nunca confirmó el email ni entró. */
+  /** Nunca entró: todavía no usó la contraseña temporal (o la invitación vieja). */
   pending: boolean;
   lastSignInAt: string | null;
-  invitedAt: string | null;
+  /** Cuándo se le mandó el acceso por última vez (o la invitación vieja). */
+  accessSentAt: string | null;
   mfa: boolean;
   status: AccountStatus;
 }
@@ -64,8 +65,17 @@ async function allAuthUsers(): Promise<User[]> {
   }
 }
 
-export function isPendingInvite(user: Pick<User, "email_confirmed_at" | "last_sign_in_at"> | undefined): boolean {
-  return Boolean(user && !user.email_confirmed_at && !user.last_sign_in_at);
+/**
+ * ¿Nunca entró? Cubre las altas con contraseña temporal (email ya confirmado)
+ * y las invitaciones por link de antes.
+ */
+export function isPendingAccess(user: Pick<User, "last_sign_in_at"> | undefined): boolean {
+  return Boolean(user && !user.last_sign_in_at);
+}
+
+/** Lo que se guarda en app_metadata al mandar el acceso (ver credentialActions). */
+export function accessMetadata(): { must_change_password: true; access_sent_at: string } {
+  return { must_change_password: true, access_sent_at: new Date().toISOString() };
 }
 
 function statusOf(row: AnalystRow, orgSuspended: boolean, pending: boolean): AccountStatus {
@@ -113,7 +123,7 @@ function toAccounts(
   return analysts.map((a) => {
     const org = orgById.get(a.org_id);
     const user = authById.get(a.user_id);
-    const pending = isPendingInvite(user);
+    const pending = isPendingAccess(user);
     const orgSuspended = Boolean(org?.disabled_at);
     return {
       userId: a.user_id,
@@ -128,7 +138,7 @@ function toAccounts(
       contactEmail: a.suspension_contact_id ? (emailById.get(a.suspension_contact_id) ?? null) : null,
       pending,
       lastSignInAt: user?.last_sign_in_at ?? null,
-      invitedAt: user?.invited_at ?? null,
+      accessSentAt: (user?.app_metadata?.access_sent_at as string | undefined) ?? user?.invited_at ?? null,
       mfa: mfaIds.has(a.user_id),
       status: statusOf(a, orgSuspended, pending),
     };

@@ -102,6 +102,9 @@ const resolveAnalyst = cache(async (): Promise<AuthState> => {
     row: row && role ? { role, disabled: Boolean(row.disabled_at) } : null,
     mfaPending,
     orgUsable: Boolean(org && !org.disabled_at),
+    // app_metadata solo lo escribe el service role (la persona no puede
+    // sacárselo); viene de getUser(), no de la cookie.
+    mustChangePassword: user.app_metadata?.must_change_password === true,
   });
 
   return {
@@ -151,7 +154,8 @@ export async function loginPathFor(role: Role | null): Promise<string> {
 
 /**
  * Exige un analista activo. Si no: al login, al paso del código (2FA), a la
- * pantalla de cuenta suspendida o al login con "sin acceso".
+ * pantalla de cuenta suspendida, a elegir su contraseña (primer ingreso) o al
+ * login con "sin acceso".
  */
 export async function requireAnalyst(): Promise<Analyst> {
   const s = await resolveAnalyst();
@@ -162,6 +166,8 @@ export async function requireAnalyst(): Promise<Analyst> {
       redirect("/auth/mfa");
     case "suspended":
       redirect("/auth/suspended");
+    case "password_setup":
+      redirect("/auth/welcome");
     case "no_account":
       redirect(`${await loginPathFor(null)}?error=forbidden`);
     case "active":

@@ -5,14 +5,12 @@ import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/Button";
 import { inputCls } from "@/components/ui/Field";
-import { NewPasswordFields, newPasswordReady } from "@/components/auth/NewPasswordFields";
 import type { AccountRow } from "@/lib/auth/accounts";
 import {
-  cancelInviteAction,
+  cancelPendingAction,
   changeEmailAction,
-  resendInviteAction,
+  resendAccessAction,
   sendResetLinkAction,
-  setPasswordAction,
 } from "../credentialActions";
 import { Feedback, StepUpInput, useAccountAction } from "../formParts";
 import { Section } from "./AccountPanels";
@@ -20,9 +18,10 @@ import { Section } from "./AccountPanels";
 /**
  * Credenciales de otra cuenta. Qué se ofrece depende de la cuenta (mismas
  * reglas que canManageAccount, que el server vuelve a aplicar):
- * - invitación pendiente → reenviar o cancelar;
- * - activa → link para restablecer la contraseña (también a otro admin);
- * - usuario (no admin) → definir contraseña y cambiar email.
+ * - nunca entró → reenviar el acceso (contraseña temporal nueva) o cancelarlo;
+ * - ya entró → link para restablecer la contraseña (también a otro admin);
+ * - usuario (no admin) → cambiar email.
+ * La contraseña de otra cuenta nunca la elige ni la ve un admin.
  */
 export function CredentialsPanel({ account }: { account: AccountRow }) {
   const isAdmin = account.role === "admin";
@@ -42,20 +41,18 @@ function AccessSection({ account }: { account: AccountRow }) {
   return (
     <Section title={t("accessTitle")} description={t("accessDescription")}>
       <div className="space-y-4">
-        {account.pending ? <InviteBlock account={account} /> : <ResetLinkBlock account={account} />}
+        {account.pending ? <PendingBlock account={account} /> : <ResetLinkBlock account={account} />}
         {suspended ? (
           <p className="text-sm text-muted">{t("suspendedNote")}</p>
-        ) : isAdmin ? (
-          <p className="text-sm text-muted">{t("otherAdminNote")}</p>
         ) : (
-          <SetPasswordBlock account={account} />
+          isAdmin && <p className="text-sm text-muted">{t("otherAdminNote")}</p>
         )}
       </div>
     </Section>
   );
 }
 
-function InviteBlock({ account }: { account: AccountRow }) {
+function PendingBlock({ account }: { account: AccountRow }) {
   const t = useTranslations("accounts");
   const tAll = useTranslations();
   const format = useFormatter();
@@ -68,7 +65,7 @@ function InviteBlock({ account }: { account: AccountRow }) {
   async function onCancel() {
     setCancelling(true);
     setCancelError(null);
-    const res = await cancelInviteAction(account.userId).catch(() => ({ ok: false as const, error: "auth.errGeneric" }));
+    const res = await cancelPendingAction(account.userId).catch(() => ({ ok: false as const, error: "auth.errGeneric" }));
     if (res.ok) {
       // La cuenta ya no existe: volver a la lista.
       router.replace("/admin/users");
@@ -81,9 +78,9 @@ function InviteBlock({ account }: { account: AccountRow }) {
   return (
     <div>
       <p className="text-sm text-foreground">
-        {account.invitedAt
-          ? t("invitePending", { date: format.dateTime(new Date(account.invitedAt), { dateStyle: "medium", timeStyle: "short" }) })
-          : t("invitePendingNoDate")}
+        {account.accessSentAt
+          ? t("accessPending", { date: format.dateTime(new Date(account.accessSentAt), { dateStyle: "medium", timeStyle: "short" }) })
+          : t("accessPendingNoDate")}
       </p>
       {!confirming ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -91,21 +88,21 @@ function InviteBlock({ account }: { account: AccountRow }) {
             variant="outline"
             size="sm"
             disabled={resend.busy}
-            onClick={() => resend.run(() => resendInviteAction(account.userId), t("inviteResent"))}
+            onClick={() => resend.run(() => resendAccessAction(account.userId), t("accessResent"))}
           >
-            {t("resendInvite")}
+            {t("resendAccess")}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
-            {t("cancelInvite")}
+            {t("cancelAccess")}
           </Button>
           <Feedback feedback={resend.feedback} />
         </div>
       ) : (
         <div className="mt-3 space-y-3 rounded-lg border border-danger/30 bg-danger/5 p-3">
-          <p className="text-sm text-foreground">{t("cancelInviteWarning", { email: account.email })}</p>
+          <p className="text-sm text-foreground">{t("cancelAccessWarning", { email: account.email })}</p>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="danger" size="sm" disabled={cancelling} onClick={onCancel}>
-              {t("cancelInvite")}
+              {t("cancelAccess")}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
               {t("back")}
@@ -139,70 +136,6 @@ function ResetLinkBlock({ account }: { account: AccountRow }) {
         <Feedback feedback={action.feedback} />
       </div>
     </div>
-  );
-}
-
-function SetPasswordBlock({ account }: { account: AccountRow }) {
-  const t = useTranslations("accounts");
-  const action = useAccountAction();
-  const [open, setOpen] = useState(false);
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [stepUpPassword, setStepUpPassword] = useState("");
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    const ok = await action.run(
-      () => setPasswordAction(account.userId, password, stepUpPassword),
-      t("passwordSet"),
-    );
-    if (ok) {
-      setPassword("");
-      setConfirm("");
-      setStepUpPassword("");
-      setOpen(false);
-    }
-  }
-
-  if (!open) {
-    return (
-      <div className="border-t border-border pt-4">
-        <p className="text-sm text-muted">{account.pending ? t("setPasswordPendingHint") : t("setPasswordHint")}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-            {t("setPassword")}
-          </Button>
-          <Feedback feedback={action.feedback} />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="space-y-3 border-t border-border pt-4">
-      <p className="text-sm text-muted">{account.pending ? t("setPasswordPendingHint") : t("setPasswordHint")}</p>
-      <NewPasswordFields
-        password={password}
-        confirm={confirm}
-        onPassword={setPassword}
-        onConfirm={setConfirm}
-        size="md"
-      />
-      <StepUpInput id="pw-stepup" value={stepUpPassword} onChange={setStepUpPassword} />
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="submit"
-          size="sm"
-          disabled={action.busy || !newPasswordReady(password, confirm) || !stepUpPassword}
-        >
-          {t("setPassword")}
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
-          {t("cancel")}
-        </Button>
-        <Feedback feedback={action.feedback} />
-      </div>
-    </form>
   );
 }
 

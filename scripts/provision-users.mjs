@@ -13,8 +13,9 @@
 // Local vs remoto: por defecto solo corre contra un Supabase LOCAL. Para
 // producción hacen falta las dos cosas: `--remote --yes` y
 // PROVISION_ALLOW_REMOTE=1. En local los usuarios se crean con la contraseña
-// de PROVISION_PASSWORD; en remoto se INVITAN por email (cada persona define
-// su contraseña desde el link), así ninguna contraseña pasa por acá.
+// de PROVISION_PASSWORD; en remoto este script NO crea usuarios: se crean desde
+// el panel (Usuarios → Nueva cuenta), que les manda por correo una contraseña
+// temporal (Supabase Auth no manda correos). Así ninguna contraseña pasa por acá.
 //
 // Nunca borra a nadie: un usuario que decidió solicitudes no se puede borrar
 // (kyb_requests.decided_by). Lo que sobra en la base se informa y se deshabilita
@@ -159,27 +160,22 @@ async function apply() {
 
     let authUser = authByEmail.get(email);
     if (!authUser) {
-      console.log(`+ usuario ${email} (${role}, ${u.org})${isLocal ? "" : " — invitación por email"}`);
-      if (dry) continue;
-      if (isLocal) {
-        const password = process.env.PROVISION_PASSWORD;
-        if (!password) fail("Falta PROVISION_PASSWORD para crear usuarios en local.");
-        const { data, error } = await supabase.auth.admin.createUser({
-          email,
-          password,
-          email_confirm: true,
-          user_metadata: { full_name: u.fullName ?? null, locale: u.locale ?? "es" },
-        });
-        if (error) fail(`crear ${email}: ${error.message}`);
-        authUser = data.user;
-      } else {
-        const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-          data: { full_name: u.fullName ?? null, locale: u.locale ?? "es" },
-          redirectTo: `${appUrl}/auth/reset?invite=1`,
-        });
-        if (error) fail(`invitar ${email}: ${error.message}`);
-        authUser = data.user;
+      if (!isLocal) {
+        console.log(`! ${email} no existe: crealo desde el panel (Usuarios → Nueva cuenta)`);
+        continue;
       }
+      console.log(`+ usuario ${email} (${role}, ${u.org})`);
+      if (dry) continue;
+      const password = process.env.PROVISION_PASSWORD;
+      if (!password) fail("Falta PROVISION_PASSWORD para crear usuarios en local.");
+      const { data, error } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: u.fullName ?? null, locale: u.locale ?? "es" },
+      });
+      if (error) fail(`crear ${email}: ${error.message}`);
+      authUser = data.user;
     }
 
     const current = analystById.get(authUser.id);

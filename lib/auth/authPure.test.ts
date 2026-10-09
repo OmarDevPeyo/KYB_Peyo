@@ -4,6 +4,7 @@ import { authErrorKey } from "./authErrors.ts";
 import { MIN_PASSWORD_LENGTH, passwordIssues } from "./passwordPolicy.ts";
 import { confirmDestination, parseConfirmLink } from "./confirmLink.ts";
 import { mfaGate } from "./mfaGate.ts";
+import { generateTempPassword } from "./tempPassword.ts";
 
 test("mfaGate: sin factores no pide nada; con factores exige aal2", () => {
   assert.equal(mfaGate({ currentLevel: "aal1", verifiedFactors: 0 }), "ok");
@@ -54,4 +55,16 @@ test("confirmDestination: el destino lo decide el tipo (sin redirección abierta
   assert.equal(confirmDestination("recovery"), "/auth/reset");
   assert.equal(confirmDestination("invite"), "/auth/reset?invite=1");
   assert.equal(confirmDestination("email_change"), "/admin/security?email=changed");
+});
+
+test("generateTempPassword cumple la política y no se repite", () => {
+  const seen = new Set<string>();
+  for (let i = 0; i < 200; i++) {
+    const pw = generateTempPassword();
+    assert.match(pw, /^[A-Za-z2-9]{4}-[A-Za-z2-9]{4}-[A-Za-z2-9]{4}$/);
+    assert.deepEqual(passwordIssues(pw), []);
+    assert.doesNotMatch(pw, /[01OlI]/);
+    seen.add(pw);
+  }
+  assert.equal(seen.size, 200);
 });

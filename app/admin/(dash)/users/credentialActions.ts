@@ -1,17 +1,16 @@
 "use server";
 
-import { findAuthUserByEmail, isPendingInvite } from "@/lib/auth/accounts";
+import { accessMetadata, findAuthUserByEmail, isPendingAccess } from "@/lib/auth/accounts";
 import { isEmail, normalizeEmail, type Role } from "@/lib/auth/accountRules";
 import { listOrgs } from "@/lib/auth/tenant";
 import { isUuid } from "@/lib/auth/tenantRules";
-import { passwordIssues } from "@/lib/auth/passwordPolicy";
-import { sendRecoveryMail } from "@/lib/auth/accountMail";
+import { accountMailReady, sendAccessMail, sendRecoveryMail } from "@/lib/auth/accountMail";
+import { generateTempPassword } from "@/lib/auth/tempPassword";
 import { logAudit } from "@/lib/kyb/service";
 import { sendAlert } from "@/lib/mail/alert";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
   accountAdmin,
-  inviteRedirect,
   loadTarget,
   mailRate,
   revalidateAccounts,
@@ -20,22 +19,43 @@ import {
 } from "./guards";
 
 /**
- * Credenciales de otras cuentas: crear por invitación, reenviar o cancelar la
- * invitación, link para restablecer la contraseña, cambiar email y definir
- * contraseña. Mismo esquema que actions.ts (admin con 2FA, reglas de
- * accountRules, service role, auditoría); lo que da acceso nuevo (invitar,
- * cambiar email o contraseña) vuelve a pedir la contraseña del admin.
+ * Credenciales de otras cuentas: alta, reenviar o cancelar el acceso de quien
+ * nunca entró, link para restablecer la contraseña y cambiar email. Mismo
+ * esquema que actions.ts (admin con 2FA, reglas de accountRules, service role,
+ * auditoría).
  *
- * A otro admin solo se le manda el link de restablecer (canManageAccount).
+ * El acceso es una contraseña temporal que le llega a la persona por correo
+ * (Resend, lib/auth/accountMail.ts): el admin nunca la ve, y en el primer
+ * ingreso la persona elige la suya (app_metadata.must_change_password →
+ * /auth/welcome). Ningún admin define la contraseña de otra cuenta.
+ *
+ * Crear la cuenta no pide la contraseña del admin (las de rol admin disparan
+ * una alerta por correo y todo queda en la auditoría); cambiar el email sí.
  */
 
 const AUTH_ERRORS: Record<string, string> = {
   email_exists: "auth.errEmailTaken",
   email_address_invalid: "auth.errEmailInvalid",
   weak_password: "auth.errWeakPassword",
-  over_email_send_rate_limit: "auth.errEmailRateLimit",
 };
 const authErrorKey = (error: { code?: string }) => AUTH_ERRORS[error.code ?? ""] ?? "auth.errGeneric";
+
+/**
+ * Contraseña temporal nueva para una cuenta existente (queda confirmada y
+ * marcada para elegir la suya al entrar) y el correo con el acceso. Sin
+ * exportar: lo que exporta un módulo "use server" se puede llamar desde el
+ * navegador.
+ */
+async function grantAccess(target: { userId: string; email: string; role: Role }): Promise<AccountResult> {
+  const password = generateTempPassword();
+  const { error } = await createServiceClient().auth.admin.updateUserById(target.userId, {
+    password,
+    email_confirm: true,
+    app_metadata: accessMetadata(),
+  });
+  if (error) return { ok: false, error: authErrorKey(error) };
+  return sendAccessMail({ email: target.email, password, role: target.role, resent: true });
+}
 
 export type CreateAccountResult =
   | { ok: true; userId: string; linked: boolean }
@@ -44,15 +64,19 @@ export type CreateAccountResult =
 /**
  * Cuenta nueva. Casos según lo que ya haya en Auth:
  * - ya tiene fila en `analysts` → error, con el id para ir a esa cuenta;
- * - usuario de Auth sin fila, con la invitación pendiente → se reinvita;
+ * - usuario de Auth sin fila que nunca entró → acceso nuevo por correo;
  * - usuario de Auth sin fila que ya entró alguna vez → se vincula sin correo
  *   (conserva su contraseña; si no la recuerda, se le manda el link);
- * - nada → invitación por email.
+ * - nada → se crea con contraseña temporal y le llega por correo.
+ *
+ * Si el correo no sale, la persona no tiene cómo entrar: se deshace el alta.
  */
-export async function createAccountAction(
-  input: { email: string; fullName: string; orgId: string; role: Role },
-  stepUpPassword: string,
-): Promise<CreateAccountResult> {
+export async function createAccountAction(input: {
+  email: string;
+  fullName: string;
+  orgId: string;
+  role: Role;
+}): Promise<CreateAccountResult> {
   const gate = await accountAdmin();
   if (!gate.ok) return gate;
   const { actor } = gate;
@@ -63,9 +87,6 @@ export async function createAccountAction(
   const role: Role = input.role === "admin" ? "admin" : "analyst";
   const org = isUuid(input.orgId) ? (await listOrgs()).find((o) => o.id === input.orgId) : undefined;
   if (!org || org.disabled) return { ok: false, error: "accounts.errOrgInvalid" };
-
-  const denied = await stepUp(actor, stepUpPassword);
-  if (denied) return { ok: false, error: denied };
 
   const supabase = createServiceClient();
   const { data: existingRow } = await supabase
@@ -79,15 +100,27 @@ export async function createAccountAction(
   }
 
   const authUser = await findAuthUserByEmail(email);
-  const linked = Boolean(authUser && !isPendingInvite(authUser));
+  const linked = Boolean(authUser && !isPendingAccess(authUser));
   let userId = authUser?.id ?? null;
+  let password: string | null = null;
   if (!linked) {
+    if (!accountMailReady()) return { ok: false, error: "auth.errMailNotConfigured" };
     const limited = await mailRate(actor);
     if (limited) return { ok: false, error: limited };
-    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-      data: { full_name: fullName },
-      redirectTo: inviteRedirect(),
-    });
+    password = generateTempPassword();
+    const { data, error } = authUser
+      ? await supabase.auth.admin.updateUserById(authUser.id, {
+          password,
+          email_confirm: true,
+          app_metadata: accessMetadata(),
+        })
+      : await supabase.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: fullName },
+          app_metadata: accessMetadata(),
+        });
     if (error || !data.user) return { ok: false, error: error ? authErrorKey(error) : "auth.errGeneric" };
     userId = data.user.id;
   } else if (authUser?.banned_until) {
@@ -105,46 +138,54 @@ export async function createAccountAction(
     return { ok: false, error: error.code === "23505" ? "accounts.errAccountExists" : "auth.errGeneric" };
   }
 
+  if (password) {
+    const sent = await sendAccessMail({ email, password, role, resent: false });
+    if (!sent.ok) {
+      // Sin el correo no puede entrar: se deshace (la fila cae en cascada).
+      if (!authUser) await supabase.auth.admin.deleteUser(userId as string);
+      else await supabase.from("analysts").delete().eq("user_id", userId as string);
+      return { ok: false, error: sent.error };
+    }
+  }
+
   await logAudit({
     requestId: null,
     orgId: org.id,
     actor: actor.email,
     actorUserId: actor.userId,
-    action: linked ? "account_linked" : "account_invited",
+    action: linked ? "account_linked" : "account_created",
     metadata: { targetUserId: userId, targetEmail: email, role },
   });
   if (role === "admin") {
     await sendAlert(`[KYB] Nueva cuenta admin: ${email}`, [
-      `${actor.email} ${linked ? "vinculó" : "invitó"} a ${email} con rol admin.`,
+      `${actor.email} ${linked ? "vinculó" : "creó"} la cuenta ${email} con rol admin.`,
     ]);
   }
   revalidateAccounts();
   return { ok: true, userId: userId as string, linked };
 }
 
-/** Vuelve a mandar la invitación (token nuevo; el anterior deja de servir). */
-export async function resendInviteAction(userId: string): Promise<AccountResult> {
+/** Contraseña temporal nueva por correo; la anterior deja de servir. */
+export async function resendAccessAction(userId: string): Promise<AccountResult> {
   const gate = await accountAdmin();
   if (!gate.ok) return gate;
   const { actor } = gate;
-  const loaded = await loadTarget(actor, userId, "resendInvite");
+  const loaded = await loadTarget(actor, userId, "resendAccess");
   if (!loaded.ok) return loaded;
   const { target } = loaded;
+  if (!accountMailReady()) return { ok: false, error: "auth.errMailNotConfigured" };
   const limited = await mailRate(actor);
   if (limited) return { ok: false, error: limited };
 
-  const { error } = await createServiceClient().auth.admin.inviteUserByEmail(target.email, {
-    data: { full_name: target.fullName },
-    redirectTo: inviteRedirect(),
-  });
-  if (error) return { ok: false, error: authErrorKey(error) };
+  const res = await grantAccess(target);
+  if (!res.ok) return res;
 
   await logAudit({
     requestId: null,
     orgId: target.orgId,
     actor: actor.email,
     actorUserId: actor.userId,
-    action: "invite_resent",
+    action: "access_resent",
     metadata: { targetUserId: userId, targetEmail: target.email },
   });
   revalidateAccounts(userId);
@@ -152,22 +193,22 @@ export async function resendInviteAction(userId: string): Promise<AccountResult>
 }
 
 /**
- * Cancela una invitación que nunca se aceptó: borra el usuario de Auth (la
- * fila de `analysts` cae en cascada). Una cuenta que ya entró no se borra: se
- * suspende.
+ * Cancela el acceso de una cuenta que nunca entró: borra el usuario de Auth
+ * (la fila de `analysts` cae en cascada). Una cuenta que ya entró no se borra:
+ * se suspende.
  */
-export async function cancelInviteAction(userId: string): Promise<AccountResult> {
+export async function cancelPendingAction(userId: string): Promise<AccountResult> {
   const gate = await accountAdmin();
   if (!gate.ok) return gate;
   const { actor } = gate;
-  const loaded = await loadTarget(actor, userId, "cancelInvite");
+  const loaded = await loadTarget(actor, userId, "cancelPending");
   if (!loaded.ok) return loaded;
   const { target } = loaded;
 
   const supabase = createServiceClient();
-  // Se relee justo antes de borrar: pudo aceptar la invitación recién.
+  // Se relee justo antes de borrar: pudo entrar recién.
   const { data } = await supabase.auth.admin.getUserById(userId);
-  if (!isPendingInvite(data.user ?? undefined)) return { ok: false, error: "accounts.errNotPending" };
+  if (!isPendingAccess(data.user ?? undefined)) return { ok: false, error: "accounts.errNotPending" };
   const { error } = await supabase.auth.admin.deleteUser(userId);
   if (error) return { ok: false, error: "auth.errGeneric" };
 
@@ -176,7 +217,7 @@ export async function cancelInviteAction(userId: string): Promise<AccountResult>
     orgId: target.orgId,
     actor: actor.email,
     actorUserId: actor.userId,
-    action: "invite_cancelled",
+    action: "access_cancelled",
     metadata: { targetUserId: userId, targetEmail: target.email, role: target.role },
   });
   revalidateAccounts();
@@ -209,9 +250,9 @@ export async function sendResetLinkAction(userId: string): Promise<AccountResult
 }
 
 /**
- * Cambia el email sin doble confirmación (lo hace un admin). Si la invitación
- * estaba pendiente se reinvita al email nuevo: el token enviado al email
- * equivocado sigue sirviendo hasta que se emite otro.
+ * Cambia el email sin confirmación por correo (lo hace un admin). Si nunca
+ * entró, el acceso se manda de nuevo al email nuevo con otra contraseña
+ * temporal: la que le llegó a la dirección equivocada deja de servir.
  */
 export async function changeEmailAction(
   userId: string,
@@ -234,24 +275,22 @@ export async function changeEmailAction(
   // índice único de auth.users. Se chequea antes para dar el error correcto.
   if (await findAuthUserByEmail(email)) return { ok: false, error: "auth.errEmailTaken" };
   if (target.pending) {
+    if (!accountMailReady()) return { ok: false, error: "auth.errMailNotConfigured" };
     const limited = await mailRate(actor);
     if (limited) return { ok: false, error: limited };
   }
 
-  const supabase = createServiceClient();
-  // `analysts.email` lo actualiza el trigger de 0026. Una invitación pendiente
-  // queda sin confirmar: con el email confirmado GoTrue ya no la reinvita.
-  const { error } = await supabase.auth.admin.updateUserById(
-    userId,
-    target.pending ? { email } : { email, email_confirm: true },
-  );
+  // `analysts.email` lo actualiza el trigger de 0026.
+  const { error } = await createServiceClient().auth.admin.updateUserById(userId, {
+    email,
+    email_confirm: true,
+  });
   if (error) return { ok: false, error: authErrorKey(error) };
+  let accessSent = false;
   if (target.pending) {
-    const { error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
-      data: { full_name: target.fullName },
-      redirectTo: inviteRedirect(),
-    });
-    if (inviteError) console.error("[accounts] reinvitar tras cambio de email falló:", inviteError.message);
+    const res = await grantAccess({ userId, email, role: target.role });
+    accessSent = res.ok;
+    if (!res.ok) console.error("[accounts] acceso al email nuevo no enviado:", res.error);
   }
 
   await logAudit({
@@ -260,48 +299,10 @@ export async function changeEmailAction(
     actor: actor.email,
     actorUserId: actor.userId,
     action: "account_email_changed",
-    metadata: { targetUserId: userId, from: target.email, to: email, reinvited: target.pending },
+    metadata: { targetUserId: userId, from: target.email, to: email, accessSent },
   });
   revalidateAccounts(userId);
-  return { ok: true };
-}
-
-/**
- * Define la contraseña de otra cuenta (no de un admin) y le cierra todas las
- * sesiones. Si la invitación estaba pendiente, la cuenta queda confirmada.
- */
-export async function setPasswordAction(
-  userId: string,
-  password: string,
-  stepUpPassword: string,
-): Promise<AccountResult> {
-  const gate = await accountAdmin();
-  if (!gate.ok) return gate;
-  const { actor } = gate;
-  const loaded = await loadTarget(actor, userId, "setPassword");
-  if (!loaded.ok) return loaded;
-  const { target } = loaded;
-  if (passwordIssues(password).length > 0) return { ok: false, error: "auth.errWeakPassword" };
-  const denied = await stepUp(actor, stepUpPassword);
-  if (denied) return { ok: false, error: denied };
-
-  const supabase = createServiceClient();
-  const { error } = await supabase.auth.admin.updateUserById(userId, {
-    password,
-    ...(target.pending ? { email_confirm: true } : {}),
-  });
-  if (error) return { ok: false, error: authErrorKey(error) };
-  const { error: revokeError } = await supabase.rpc("admin_revoke_sessions", { p_user_id: userId });
-  if (revokeError) console.error("[accounts] admin_revoke_sessions falló:", revokeError.message);
-
-  await logAudit({
-    requestId: null,
-    orgId: target.orgId,
-    actor: actor.email,
-    actorUserId: actor.userId,
-    action: "account_password_set",
-    metadata: { targetUserId: userId, targetEmail: target.email, sessionsRevoked: !revokeError },
-  });
-  revalidateAccounts(userId);
+  // El email cambió igual: si el acceso no salió, se reenvía desde la cuenta.
+  if (target.pending && !accessSent) return { ok: false, error: "accounts.errEmailChangedNoAccess" };
   return { ok: true };
 }

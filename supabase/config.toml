@@ -266,10 +266,6 @@ otp_expiry = 3600
 # (lib/auth/accountMail.ts). Los links usan el token de generateLink y van a
 # /auth/confirm. El aviso de contraseña cambiada de Supabase queda apagado
 # (también en el dashboard de producción) porque lo manda la app.
-[auth.email.template.invite]
-subject = "Te invitaron al panel KYB de Peyo"
-content_path = "./supabase/templates/invite.html"
-
 [auth.email.notification.password_changed]
 enabled = false
 

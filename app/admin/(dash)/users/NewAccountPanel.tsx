@@ -11,13 +11,15 @@ import { inputCls } from "@/components/ui/Field";
 import type { OrgOption } from "@/lib/auth/tenant";
 import type { Role } from "@/lib/auth/accountRules";
 import { createAccountAction } from "./credentialActions";
-import { StepUpInput } from "./formParts";
 
 type Outcome =
   | { tone: "ok"; text: string; userId: string }
   | { tone: "error"; text: string; userId?: string };
 
-/** Alta de una cuenta por invitación (el correo lo manda Supabase). */
+/**
+ * Alta de una cuenta. La contraseña la genera el server y le llega a la
+ * persona por correo: acá no se pide ni se ve ninguna contraseña.
+ */
 export function NewAccountPanel({ orgs, defaultOrg }: { orgs: OrgOption[]; defaultOrg: string }) {
   const t = useTranslations("accounts");
   const tAll = useTranslations();
@@ -27,7 +29,6 @@ export function NewAccountPanel({ orgs, defaultOrg }: { orgs: OrgOption[]; defau
   const [fullName, setFullName] = useState("");
   const [orgId, setOrgId] = useState(orgs.some((o) => o.id === defaultOrg) ? defaultOrg : (orgs[0]?.id ?? ""));
   const [role, setRole] = useState<Role>("analyst");
-  const [stepUpPassword, setStepUpPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
@@ -36,7 +37,7 @@ export function NewAccountPanel({ orgs, defaultOrg }: { orgs: OrgOption[]; defau
     setBusy(true);
     setOutcome(null);
     try {
-      const res = await createAccountAction({ email, fullName, orgId, role }, stepUpPassword);
+      const res = await createAccountAction({ email, fullName, orgId, role });
       if (!res.ok) {
         setOutcome({ tone: "error", text: tAll(res.error), userId: res.existingUserId });
         return;
@@ -44,13 +45,12 @@ export function NewAccountPanel({ orgs, defaultOrg }: { orgs: OrgOption[]; defau
       const shown = email.trim().toLowerCase();
       setOutcome({
         tone: "ok",
-        text: res.linked ? t("linked", { email: shown }) : t("invited", { email: shown }),
+        text: res.linked ? t("linked", { email: shown }) : t("accessSent", { email: shown }),
         userId: res.userId,
       });
       setEmail("");
       setFullName("");
       setRole("analyst");
-      setStepUpPassword("");
       router.refresh();
     } catch {
       setOutcome({ tone: "error", text: tAll("auth.errGeneric") });
@@ -139,12 +139,9 @@ export function NewAccountPanel({ orgs, defaultOrg }: { orgs: OrgOption[]; defau
             {t("promoteWarning")}
           </p>
         )}
-        <div className="sm:col-span-2">
-          <StepUpInput id="new-stepup" value={stepUpPassword} onChange={setStepUpPassword} />
-        </div>
         <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-          <Button type="submit" size="sm" disabled={busy || !email.trim() || !orgId || !stepUpPassword}>
-            {t("invite")}
+          <Button type="submit" size="sm" disabled={busy || !email.trim() || !orgId}>
+            {t("createAccount")}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
             {t("cancel")}

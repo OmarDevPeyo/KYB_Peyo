@@ -1,8 +1,9 @@
 /**
- * Links de los correos de Auth: `/auth/confirm?token_hash=…&type=…`
- * (ver supabase/templates/).
+ * Links de los correos de las cuentas: `/auth/confirm?token_hash=…&type=…`
+ * (los arma lib/auth/accountMail.ts con generateLink).
  *
- * Solo se aceptan los tres tipos que mandan nuestras plantillas, y el destino
+ * Solo se aceptan estos tipos (`invite` queda por las invitaciones que se
+ * mandaron antes de pasar a la contraseña temporal), y el destino
  * después de verificar lo decide el TIPO, no un parámetro `next` de la URL: no
  * hay redirección abierta posible.
  *

@@ -28,7 +28,7 @@ test("portales: cada rol tiene su login", () => {
 });
 
 test("accountState: el 2FA va antes que la suspensión", () => {
-  const base = { signedIn: true, mfaPending: false, orgUsable: true };
+  const base = { signedIn: true, mfaPending: false, orgUsable: true, mustChangePassword: false };
   assert.deepEqual(accountState({ ...base, signedIn: false, row: null }), { kind: "signed_out" });
   assert.deepEqual(accountState({ ...base, row: null }), { kind: "no_account" });
   // Suspendido y con 2FA pendiente: primero el código.
@@ -51,6 +51,18 @@ test("accountState: el 2FA va antes que la suspensión", () => {
   });
 });
 
+test("accountState: la contraseña propia se elige al final", () => {
+  const base = { signedIn: true, mfaPending: false, orgUsable: true, mustChangePassword: true };
+  assert.deepEqual(accountState({ ...base, row: { role: "analyst", disabled: false } }), {
+    kind: "password_setup",
+    role: "analyst",
+  });
+  // Primero el 2FA y la suspensión.
+  assert.equal(accountState({ ...base, mfaPending: true, row: { role: "admin", disabled: false } }).kind, "mfa_pending");
+  assert.equal(accountState({ ...base, row: { role: "analyst", disabled: true } }).kind, "suspended");
+  assert.equal(accountState({ ...base, orgUsable: false, row: { role: "analyst", disabled: false } }).kind, "suspended");
+});
+
 test("postLoginOutcome: el portal equivocado se rechaza antes del 2FA", () => {
   assert.deepEqual(postLoginOutcome({ kind: "mfa_pending", role: "admin" }, "user"), {
     error: "wrongPortal",
@@ -67,12 +79,18 @@ test("postLoginOutcome: el portal equivocado se rechaza antes del 2FA", () => {
   assert.deepEqual(postLoginOutcome({ kind: "active", role: "analyst" }, "user"), {
     next: "/admin",
   });
+  assert.deepEqual(postLoginOutcome({ kind: "password_setup", role: "admin" }, "admin"), {
+    next: "/auth/welcome",
+  });
+  assert.deepEqual(postLoginOutcome({ kind: "password_setup", role: "admin" }, "user"), {
+    error: "wrongPortal",
+  });
   assert.deepEqual(postLoginOutcome({ kind: "no_account" }, "user"), { error: "forbidden" });
 });
 
 test("canManageAccount: nada sobre uno mismo", () => {
   const me: AccountTarget = { userId: "a", role: "admin", suspended: false, pending: false };
-  for (const action of ["name", "email", "role", "org", "suspend", "setPassword"] as const) {
+  for (const action of ["name", "email", "role", "org", "suspend", "resetLink", "resendAccess"] as const) {
     assert.equal(canManageAccount("a", me, action), "self");
   }
 });
@@ -80,29 +98,30 @@ test("canManageAccount: nada sobre uno mismo", () => {
 test("canManageAccount: a otro admin solo se le manda el link", () => {
   const other: AccountTarget = { userId: "b", role: "admin", suspended: false, pending: false };
   assert.equal(canManageAccount("a", other, "email"), "otherAdmin");
-  assert.equal(canManageAccount("a", other, "setPassword"), "otherAdmin");
   assert.equal(canManageAccount("a", other, "resetLink"), null);
+  assert.equal(canManageAccount("a", other, "resendAccess"), "notPending");
+  // Un admin que nunca entró: se le reenvía el acceso.
+  assert.equal(canManageAccount("a", { ...other, pending: true }, "resendAccess"), null);
   assert.equal(canManageAccount("a", other, "suspend"), null);
   assert.equal(canManageAccount("a", other, "role"), null);
 });
 
-test("canManageAccount: suspendidos e invitaciones pendientes", () => {
+test("canManageAccount: suspendidos y cuentas que nunca entraron", () => {
   const user: AccountTarget = { userId: "u", role: "analyst", suspended: false, pending: false };
-  assert.equal(canManageAccount("a", user, "setPassword"), null);
   assert.equal(canManageAccount("a", user, "email"), null);
+  assert.equal(canManageAccount("a", user, "resetLink"), null);
   assert.equal(canManageAccount("a", user, "reactivate"), "notSuspended");
-  assert.equal(canManageAccount("a", user, "cancelInvite"), "notPending");
+  assert.equal(canManageAccount("a", user, "cancelPending"), "notPending");
 
   const suspended = { ...user, suspended: true };
-  assert.equal(canManageAccount("a", suspended, "setPassword"), "suspended");
   assert.equal(canManageAccount("a", suspended, "resetLink"), "suspended");
   assert.equal(canManageAccount("a", suspended, "suspend"), "alreadySuspended");
   assert.equal(canManageAccount("a", suspended, "reactivate"), null);
 
   const pending = { ...user, pending: true };
   assert.equal(canManageAccount("a", pending, "resetLink"), "pending");
-  assert.equal(canManageAccount("a", pending, "resendInvite"), null);
-  assert.equal(canManageAccount("a", pending, "cancelInvite"), null);
+  assert.equal(canManageAccount("a", pending, "resendAccess"), null);
+  assert.equal(canManageAccount("a", pending, "cancelPending"), null);
 });
 
 test("removesLastAdmin y canSuspendOrg", () => {

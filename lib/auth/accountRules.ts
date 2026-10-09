@@ -50,12 +50,15 @@ export type AccountState =
   | { kind: "no_account" }
   | { kind: "mfa_pending"; role: Role }
   | { kind: "suspended"; scope: "user" | "org"; role: Role }
+  /** Entró con la contraseña temporal del correo: falta elegir la suya. */
+  | { kind: "password_setup"; role: Role }
   | { kind: "active"; role: Role };
 
 /**
  * El orden importa: el 2FA va ANTES que la suspensión, así quien solo tiene la
  * contraseña no se entera de si la cuenta está suspendida ni ve el email de
- * contacto.
+ * contacto. Elegir la contraseña propia va al final: con la cuenta suspendida
+ * no hay nada que elegir.
  */
 export function accountState(input: {
   signedIn: boolean;
@@ -64,6 +67,8 @@ export function accountState(input: {
   mfaPending: boolean;
   /** La org se pudo leer y está habilitada. Solo se evalúa si el resto pasó. */
   orgUsable: boolean;
+  /** Tiene la contraseña temporal del correo (app_metadata.must_change_password). */
+  mustChangePassword: boolean;
 }): AccountState {
   if (!input.signedIn) return { kind: "signed_out" };
   if (!input.row) return { kind: "no_account" };
@@ -71,6 +76,7 @@ export function accountState(input: {
   if (input.mfaPending) return { kind: "mfa_pending", role };
   if (input.row.disabled) return { kind: "suspended", scope: "user", role };
   if (!input.orgUsable) return { kind: "suspended", scope: "org", role };
+  if (input.mustChangePassword) return { kind: "password_setup", role };
   return { kind: "active", role };
 }
 
@@ -83,7 +89,7 @@ export function accountState(input: {
  * siguen siendo requireAdmin y la RLS.
  */
 export type PostLoginOutcome =
-  | { next: "/admin" | "/auth/mfa" | "/auth/suspended" }
+  | { next: "/admin" | "/auth/mfa" | "/auth/suspended" | "/auth/welcome" }
   | { error: "wrongPortal" | "forbidden" };
 
 export function postLoginOutcome(state: AccountState, portal: Portal): PostLoginOutcome {
@@ -91,6 +97,7 @@ export function postLoginOutcome(state: AccountState, portal: Portal): PostLogin
   if (portalFor(state.role) !== portal) return { error: "wrongPortal" };
   if (state.kind === "mfa_pending") return { next: "/auth/mfa" };
   if (state.kind === "suspended") return { next: "/auth/suspended" };
+  if (state.kind === "password_setup") return { next: "/auth/welcome" };
   return { next: "/admin" };
 }
 
@@ -106,15 +113,14 @@ export type AccountAction =
   | "suspend"
   | "reactivate"
   | "resetLink"
-  | "setPassword"
-  | "resendInvite"
-  | "cancelInvite";
+  | "resendAccess"
+  | "cancelPending";
 
 export interface AccountTarget {
   userId: string;
   role: Role;
   suspended: boolean;
-  /** Invitación sin aceptar: nunca confirmó el email ni entró. */
+  /** Nunca entró: todavía no usó la contraseña temporal (o la invitación vieja). */
   pending: boolean;
 }
 
@@ -131,12 +137,14 @@ export type AccountGuardError =
  * `null` = permitido. Reglas:
  * - Sobre la propia cuenta, nada: se usa Seguridad (y así nadie se suspende ni
  *   se quita el rol a sí mismo).
- * - A otro admin no se le cambia el email ni la contraseña: solo se le manda el
- *   link de restablecer, que le llega a su propio correo.
- * - Con la cuenta suspendida no se tocan credenciales (no hay nada que
- *   restablecer hasta reactivarla).
- * - Con la invitación pendiente, lo que corresponde es reenviarla, no un link
- *   de restablecer.
+ * - A otro admin no se le cambia el email: solo se le manda el link de
+ *   restablecer, que le llega a su propio correo (o, si nunca entró, se le
+ *   reenvía el acceso).
+ * - Con la cuenta suspendida no se mandan links (no hay nada que restablecer
+ *   hasta reactivarla).
+ * - Si nunca entró, lo que corresponde es reenviarle el acceso (contraseña
+ *   temporal nueva), no un link de restablecer.
+ * - Ninguna regla deja que un admin elija la contraseña de otra cuenta.
  */
 export function canManageAccount(
   actorId: string,
@@ -146,16 +154,13 @@ export function canManageAccount(
   if (actorId === target.userId) return "self";
   switch (action) {
     case "email":
-    case "setPassword":
-      if (target.role === "admin") return "otherAdmin";
-      if (action === "setPassword" && target.suspended) return "suspended";
-      return null;
+      return target.role === "admin" ? "otherAdmin" : null;
     case "resetLink":
       if (target.suspended) return "suspended";
       if (target.pending) return "pending";
       return null;
-    case "resendInvite":
-    case "cancelInvite":
+    case "resendAccess":
+    case "cancelPending":
       return target.pending ? null : "notPending";
     case "suspend":
       return target.suspended ? "alreadySuspended" : null;

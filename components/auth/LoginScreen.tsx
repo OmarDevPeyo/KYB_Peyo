@@ -25,6 +25,7 @@ export async function LoginScreen({
   const { state } = await getAuthState();
   if (state.kind === "mfa_pending") redirect("/auth/mfa");
   if (state.kind === "suspended") redirect("/auth/suspended");
+  if (state.kind === "password_setup") redirect("/auth/welcome");
   if (state.kind === "active") redirect("/admin");
 
   const t = await getTranslations("auth");

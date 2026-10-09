@@ -72,16 +72,20 @@ Dos logins para el mismo panel; cada uno acepta solo su rol:
 - **`/admin/login`**: administradores de la plataforma (ven y gestionan todas las orgs).
 
 Las pantallas compartidas viven en `/auth/*`: recuperar contraseña (`forgot`),
-links de los correos (`confirm`), contraseña nueva (`reset`), código 2FA (`mfa`)
-y cuenta suspendida (`suspended`). La cookie `kyb_portal` recuerda por qué login
+links de los correos (`confirm`), contraseña nueva (`reset`), primer ingreso
+(`welcome`), código 2FA (`mfa`) y cuenta suspendida (`suspended`). La cookie `kyb_portal` recuerda por qué login
 entró cada uno, para mandarlo ahí al cerrar sesión o cuando vence.
 
 **Página Usuarios** (`/admin/users`, solo admin):
 
-- Crear cuentas por invitación (el correo lo manda Supabase), reenviarlas o
-  cancelarlas mientras no se acepten.
-- Editar nombre, rol y organización; cambiar email, definir contraseña o mandar
-  el link para restablecerla. A **otro admin** solo se le manda el link.
+- Crear cuentas: a la persona le llega por correo (Resend) una contraseña
+  temporal que nadie más ve. Al entrar por primera vez elige la suya
+  (`/auth/welcome`; la marca es `app_metadata.must_change_password`) y se le
+  ofrece activar el 2FA. Mientras no entre, se le puede reenviar el acceso
+  (contraseña nueva) o cancelarlo.
+- Editar nombre, rol y organización; cambiar email o mandar el link para
+  restablecer la contraseña. Ningún admin elige la contraseña de otro. A
+  **otro admin** solo se le manda el link.
 - Suspender y reactivar usuarios y organizaciones, eligiendo el admin de
   contacto cuyo email ve el suspendido en `/auth/suspended`.
   - Usuario suspendido: no entra al panel.
@@ -89,12 +93,14 @@ entró cada uno, para mandarlo ahí al cerrar sesión o cuando vence.
     `403 organization_suspended` y sus formularios públicos (`/forms/<id>`) no
     toman solicitudes nuevas. Los `/f/<token>` en curso siguen andando.
 - Para modificar hace falta que el admin tenga **2FA activado** (Seguridad); dar
-  rol admin, invitar, cambiar email o contraseña y reactivar a un admin vuelven
-  a pedir su contraseña.
+  rol admin, cambiar email y reactivar a un admin vuelven a pedir su
+  contraseña. Crear una cuenta no la pide; si es admin, sale una alerta a
+  `ALERT_EMAIL_TO`.
 - La base garantiza que nunca queden cero admins activos y que no se suspenda
   una org con admins (`0028_accounts.sql`).
 
-El script `npm run provision` sigue sirviendo para el alta inicial y para
+El script `npm run provision` sigue sirviendo para el alta inicial en local
+(en remoto los usuarios nuevos se crean desde el panel) y para
 `disable <email> --contact <admin>`, `enable`, `reset-mfa` (quitar el 2FA de
 alguien, que el panel no hace) y `recovery-link`.
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Check, Copy, LoaderCircle, LogOut, ShieldCheck, ShieldOff } from "lucide-react";
@@ -36,18 +36,20 @@ function FeedbackLine({ feedback }: { feedback: Feedback }) {
 }
 
 function Section({
+  id,
   title,
   description,
   aside,
   children,
 }: {
+  id?: string;
   title: string;
   description: string;
   aside?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <Card className="p-5 sm:p-6">
+    <Card id={id} className="scroll-mt-4 p-5 sm:p-6">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold text-foreground">{title}</h2>
@@ -270,9 +272,12 @@ type Enrollment = { factorId: string; qr: string; secret: string };
 
 export function MfaSection({
   factor,
+  autoStart = false,
 }: {
   /** Factor TOTP verificado, si el 2FA está activo. */
   factor: { id: string; createdAt: string } | null;
+  /** Arranca el alta al abrir (viene de "Activar ahora" del primer ingreso). */
+  autoStart?: boolean;
 }) {
   const t = useTranslations("security");
   const tAuth = useTranslations("auth");
@@ -283,6 +288,7 @@ export function MfaSection({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmDisable, setConfirmDisable] = useState(false);
+  const autoStarted = useRef(false);
 
   async function start() {
     setBusy(true);
@@ -304,6 +310,15 @@ export function MfaSection({
     // `qr_code` ya viene como data URL (SVG).
     setEnrollment({ factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
   }
+
+  // Una sola vez (en dev React monta dos veces y serían dos altas).
+  useEffect(() => {
+    if (!autoStart || factor || autoStarted.current) return;
+    autoStarted.current = true;
+    document.getElementById("mfa")?.scrollIntoView({ block: "start" });
+    void start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar
+  }, []);
 
   async function verify(e: FormEvent) {
     e.preventDefault();
@@ -354,7 +369,7 @@ export function MfaSection({
   );
 
   return (
-    <Section title={t("mfaTitle")} description={t("mfaDescription")} aside={status}>
+    <Section id="mfa" title={t("mfaTitle")} description={t("mfaDescription")} aside={status}>
       {error && (
         <p role="alert" className="mb-3 text-sm text-danger">
           {error}

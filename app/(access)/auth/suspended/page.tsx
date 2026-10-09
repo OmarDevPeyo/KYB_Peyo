@@ -17,7 +17,9 @@ export default async function SuspendedPage() {
   const s = await getAuthState();
   if (s.state.kind === "signed_out") redirect(await loginPathFor(null));
   if (s.state.kind === "mfa_pending") redirect("/auth/mfa");
-  if (s.state.kind !== "suspended") redirect(s.state.kind === "active" ? "/admin" : "/login");
+  if (s.state.kind !== "suspended") {
+    redirect(s.state.kind === "active" || s.state.kind === "password_setup" ? "/admin" : "/login");
+  }
 
   const t = await getTranslations("auth");
   const { contactEmail, orgName } = await suspensionInfo(s.userId!, s.state.scope);

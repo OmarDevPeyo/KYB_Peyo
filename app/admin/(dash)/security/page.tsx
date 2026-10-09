@@ -19,11 +19,11 @@ export const dynamic = "force-dynamic";
 export default async function SecurityPage({
   searchParams,
 }: {
-  searchParams: Promise<{ email?: string }>;
+  searchParams: Promise<{ email?: string; mfa?: string }>;
 }) {
   const analyst = await requireAnalyst();
   const t = await getTranslations("security");
-  const { email } = await searchParams;
+  const { email, mfa } = await searchParams;
 
   // Factores desde el servidor de Auth (no desde la cookie).
   const supabase = await createServerSupabase();
@@ -57,7 +57,10 @@ export default async function SecurityPage({
         <ProfileSection fullName={analyst.fullName ?? ""} />
         <EmailSection email={analyst.email} />
         <PasswordSection />
-        <MfaSection factor={totp ? { id: totp.id, createdAt: totp.created_at } : null} />
+        <MfaSection
+          factor={totp ? { id: totp.id, createdAt: totp.created_at } : null}
+          autoStart={mfa === "1"}
+        />
         <SessionsSection />
       </div>
     </main>
