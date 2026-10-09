@@ -10,6 +10,7 @@ import {
   cancelPendingAction,
   changeEmailAction,
   resendAccessAction,
+  sendAdminPasswordAction,
   sendResetLinkAction,
 } from "../credentialActions";
 import { Feedback, StepUpInput, useAccountAction } from "../formParts";
@@ -20,7 +21,8 @@ import { Section } from "./AccountPanels";
  * reglas que canManageAccount, que el server vuelve a aplicar):
  * - nunca entró → reenviar el acceso (contraseña temporal nueva) o cancelarlo;
  * - ya entró → link para restablecer la contraseña (también a otro admin);
- * - usuario (no admin) → cambiar email.
+ * - usuario (no admin) → cambiar email;
+ * - TEMPORAL: otro admin que ya entró → contraseña nueva por correo.
  * La contraseña de otra cuenta nunca la elige ni la ve un admin.
  */
 export function CredentialsPanel({ account }: { account: AccountRow }) {
@@ -45,7 +47,12 @@ function AccessSection({ account }: { account: AccountRow }) {
         {suspended ? (
           <p className="text-sm text-muted">{t("suspendedNote")}</p>
         ) : (
-          isAdmin && <p className="text-sm text-muted">{t("otherAdminNote")}</p>
+          isAdmin && (
+            <>
+              <p className="text-sm text-muted">{t("otherAdminNote")}</p>
+              {!account.pending && <AdminPasswordBlock account={account} />}
+            </>
+          )
         )}
       </div>
     </Section>
@@ -135,6 +142,50 @@ function ResetLinkBlock({ account }: { account: AccountRow }) {
         </Button>
         <Feedback feedback={action.feedback} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * TEMPORAL (se da de baja más adelante): contraseña nueva por correo a otro
+ * admin. Pide confirmar: le corta las sesiones abiertas.
+ */
+function AdminPasswordBlock({ account }: { account: AccountRow }) {
+  const t = useTranslations("accounts");
+  const action = useAccountAction();
+  const [confirming, setConfirming] = useState(false);
+
+  async function onSend() {
+    await action.run(
+      () => sendAdminPasswordAction(account.userId),
+      t("adminPasswordSent", { email: account.email }),
+    );
+    setConfirming(false);
+  }
+
+  return (
+    <div className="border-t border-border pt-4">
+      <p className="text-sm text-muted">{t("sendAdminPasswordHint")}</p>
+      {!confirming ? (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+            {t("sendAdminPassword")}
+          </Button>
+          <Feedback feedback={action.feedback} />
+        </div>
+      ) : (
+        <div className="mt-3 space-y-3 rounded-lg border border-warning/40 bg-warning/10 p-3">
+          <p className="text-sm text-foreground">{t("sendAdminPasswordWarning", { email: account.email })}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={action.busy} onClick={onSend}>
+              {t("sendAdminPassword")}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+              {t("back")}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

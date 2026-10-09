@@ -250,6 +250,43 @@ export async function sendResetLinkAction(userId: string): Promise<AccountResult
 }
 
 /**
+ * TEMPORAL (se da de baja más adelante): contraseña temporal nueva por correo
+ * a otro admin que ya entró. El update de admin le cierra todas las sesiones y
+ * al entrar tiene que elegir la suya (/auth/welcome). Sin step-up, como el link
+ * de restablecer: la contraseña le llega a su correo, no a quien aprieta el
+ * botón.
+ */
+export async function sendAdminPasswordAction(userId: string): Promise<AccountResult> {
+  const gate = await accountAdmin();
+  if (!gate.ok) return gate;
+  const { actor } = gate;
+  const loaded = await loadTarget(actor, userId, "sendAdminPassword");
+  if (!loaded.ok) return loaded;
+  const { target } = loaded;
+  if (!accountMailReady()) return { ok: false, error: "auth.errMailNotConfigured" };
+  const limited = await mailRate(actor);
+  if (limited) return { ok: false, error: limited };
+
+  const res = await grantAccess(target);
+  if (!res.ok) return res;
+
+  await logAudit({
+    requestId: null,
+    orgId: target.orgId,
+    actor: actor.email,
+    actorUserId: actor.userId,
+    action: "admin_password_sent",
+    metadata: { targetUserId: userId, targetEmail: target.email },
+  });
+  await sendAlert(`[KYB] Contraseña nueva para admin: ${target.email}`, [
+    `${actor.email} le mandó por correo una contraseña temporal nueva a ${target.email}.`,
+    "Se le cerraron las sesiones abiertas y al entrar tiene que elegir la suya.",
+  ]);
+  revalidateAccounts(userId);
+  return { ok: true };
+}
+
+/**
  * Cambia el email sin confirmación por correo (lo hace un admin). Si nunca
  * entró, el acceso se manda de nuevo al email nuevo con otra contraseña
  * temporal: la que le llegó a la dirección equivocada deja de servir.

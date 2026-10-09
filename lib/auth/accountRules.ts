@@ -114,7 +114,9 @@ export type AccountAction =
   | "reactivate"
   | "resetLink"
   | "resendAccess"
-  | "cancelPending";
+  | "cancelPending"
+  /** TEMPORAL: contraseña nueva por correo a otro admin (se da de baja). */
+  | "sendAdminPassword";
 
 export interface AccountTarget {
   userId: string;
@@ -131,7 +133,8 @@ export type AccountGuardError =
   | "notSuspended"
   | "alreadySuspended"
   | "pending"
-  | "notPending";
+  | "notPending"
+  | "notAdmin";
 
 /**
  * `null` = permitido. Reglas:
@@ -144,6 +147,8 @@ export type AccountGuardError =
  *   hasta reactivarla).
  * - Si nunca entró, lo que corresponde es reenviarle el acceso (contraseña
  *   temporal nueva), no un link de restablecer.
+ * - TEMPORAL: a otro admin que ya entró se le puede mandar por correo una
+ *   contraseña temporal nueva (se genera; nadie la elige ni la ve).
  * - Ninguna regla deja que un admin elija la contraseña de otra cuenta.
  */
 export function canManageAccount(
@@ -162,6 +167,11 @@ export function canManageAccount(
     case "resendAccess":
     case "cancelPending":
       return target.pending ? null : "notPending";
+    case "sendAdminPassword":
+      if (target.role !== "admin") return "notAdmin";
+      if (target.suspended) return "suspended";
+      // Si nunca entró, lo que corresponde es "Reenviar acceso".
+      return target.pending ? "pending" : null;
     case "suspend":
       return target.suspended ? "alreadySuspended" : null;
     case "reactivate":

@@ -87,6 +87,9 @@ entró cada uno, para mandarlo ahí al cerrar sesión o cuando vence.
 - Editar nombre, rol y organización; cambiar email o mandar el link para
   restablecer la contraseña. Ningún admin elige la contraseña de otro. A
   **otro admin** solo se le manda el link.
+- **Temporal** (se dará de baja): a otro admin que ya entró se le puede mandar
+  por correo una contraseña nueva ("Enviar contraseña por correo"); se le
+  cierran las sesiones y al entrar elige la suya.
 - Suspender y reactivar usuarios y organizaciones, eligiendo el admin de
   contacto cuyo email ve el suspendido en `/auth/suspended`.
   - Usuario suspendido: no entra al panel.

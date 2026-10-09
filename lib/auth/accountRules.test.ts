@@ -124,6 +124,15 @@ test("canManageAccount: suspendidos y cuentas que nunca entraron", () => {
   assert.equal(canManageAccount("a", pending, "cancelPending"), null);
 });
 
+test("canManageAccount: contraseña por correo solo a otro admin que ya entró (temporal)", () => {
+  const other: AccountTarget = { userId: "b", role: "admin", suspended: false, pending: false };
+  assert.equal(canManageAccount("a", other, "sendAdminPassword"), null);
+  assert.equal(canManageAccount("b", other, "sendAdminPassword"), "self");
+  assert.equal(canManageAccount("a", { ...other, role: "analyst" }, "sendAdminPassword"), "notAdmin");
+  assert.equal(canManageAccount("a", { ...other, suspended: true }, "sendAdminPassword"), "suspended");
+  assert.equal(canManageAccount("a", { ...other, pending: true }, "sendAdminPassword"), "pending");
+});
+
 test("removesLastAdmin y canSuspendOrg", () => {
   assert.equal(removesLastAdmin({ targetIsActiveAdmin: true, activeAdmins: 1 }), true);
   assert.equal(removesLastAdmin({ targetIsActiveAdmin: true, activeAdmins: 2 }), false);

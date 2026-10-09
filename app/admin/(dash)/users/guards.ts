@@ -59,6 +59,7 @@ const GUARD_ERRORS: Record<string, string> = {
   alreadySuspended: "accounts.errAlreadySuspended",
   pending: "accounts.errPending",
   notPending: "accounts.errNotPending",
+  notAdmin: "accounts.errNotAdmin",
 };
 
 /** Carga la cuenta destino y aplica la regla de la acción. */

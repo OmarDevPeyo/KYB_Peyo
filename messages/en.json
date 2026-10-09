@@ -278,7 +278,7 @@
     "sendResetLink": "Send password reset link",
     "resetLinkHint": "They get an email to choose a new password.",
     "resetLinkSent": "Link sent to {email}.",
-    "otherAdminNote": "Another administrator can only be sent the link: their email and password are changed from their own Security page.",
+    "otherAdminNote": "Another administrator's email can't be changed and nobody chooses their password: send them the link or a new password by email.",
     "suspendedNote": "While the account is suspended, no links are sent.",
     "emailTitle": "Email",
     "emailDescription": "The one they sign in with. It changes right away, with no email confirmation: let them know. Their password stays the same.",
@@ -294,7 +294,12 @@
     "accessResent": "Access resent with a new password. The previous one no longer works.",
     "cancelAccess": "Cancel access",
     "cancelAccessWarning": "The account for {email} is deleted and the password they received stops working.",
-    "errEmailChangedNoAccess": "The email was changed, but the access couldn't be sent. Use “Resend access”."
+    "errEmailChangedNoAccess": "The email was changed, but the access couldn't be sent. Use “Resend access”.",
+    "sendAdminPassword": "Email a new password",
+    "sendAdminPasswordHint": "Temporary: they get a new password by email and must change it when they sign in.",
+    "sendAdminPasswordWarning": "{email} gets a new password by email: the current one stops working and their open sessions are closed. They choose their own when signing in.",
+    "adminPasswordSent": "New password sent to {email}.",
+    "errNotAdmin": "This is only for administrator accounts."
   },
   "clients": {
     "title": "API clients",

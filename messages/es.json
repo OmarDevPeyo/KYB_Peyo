@@ -278,7 +278,7 @@
     "sendResetLink": "Enviar link para restablecer la contraseña",
     "resetLinkHint": "Le llega un correo para elegir una contraseña nueva.",
     "resetLinkSent": "Link enviado a {email}.",
-    "otherAdminNote": "A otro administrador solo se le manda el link: su email y su contraseña se cambian desde su página de Seguridad.",
+    "otherAdminNote": "A otro administrador no se le cambia el email ni se le elige la contraseña: se le manda el link o una contraseña nueva por correo.",
     "suspendedNote": "Con la cuenta suspendida no se mandan links.",
     "emailTitle": "Email",
     "emailDescription": "Con el que entra al panel. Cambia en el acto, sin confirmación por correo: avisale. Su contraseña no cambia.",
@@ -294,7 +294,12 @@
     "accessResent": "Acceso reenviado con una contraseña nueva. La anterior ya no sirve.",
     "cancelAccess": "Cancelar acceso",
     "cancelAccessWarning": "Se borra la cuenta de {email} y la contraseña que le llegó deja de servir.",
-    "errEmailChangedNoAccess": "El email se cambió, pero no se pudo mandar el acceso. Usá «Reenviar acceso»."
+    "errEmailChangedNoAccess": "El email se cambió, pero no se pudo mandar el acceso. Usá «Reenviar acceso».",
+    "sendAdminPassword": "Enviar contraseña por correo",
+    "sendAdminPasswordHint": "Temporal: le llega por correo una contraseña nueva que tiene que cambiar al entrar.",
+    "sendAdminPasswordWarning": "A {email} le llega una contraseña nueva por correo: la actual deja de servir y se le cierran las sesiones abiertas. Al entrar elige la suya.",
+    "adminPasswordSent": "Contraseña nueva enviada a {email}.",
+    "errNotAdmin": "Esto es solo para cuentas de administrador."
   },
   "clients": {
     "title": "Clientes API 2",
