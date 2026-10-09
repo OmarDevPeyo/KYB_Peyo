@@ -233,11 +233,14 @@ secret = "env(SUPABASE_AUTH_CAPTCHA_SECRET)"
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
-double_confirm_changes = true
+# En false ("Secure email change" apagado en el dashboard): el link lo manda la
+# app (lib/auth/accountMail.ts) solo a la dirección nueva, y a la vieja le
+# llega un aviso.
+double_confirm_changes = false
 # If enabled, users need to confirm their email address before signing in.
-# En true como en producción: con false GoTrue "autoconfirma" y se saltea la
-# doble confirmación del cambio de email de arriba. No afecta a los usuarios
-# del script de provisión (se crean confirmados o por invitación).
+# En true como en producción: con false GoTrue "autoconfirma" también el cambio
+# de email y no haría falta abrir el link. No afecta a los usuarios del panel
+# ni del script de provisión (se crean confirmados).
 enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
@@ -258,26 +261,17 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Plantillas propias. Los links usan `token_hash` y van a /auth/confirm
-# (no el `{{ .ConfirmationURL }}` por defecto): así funcionan en cualquier
-# navegador y los verifica el server. En producción se pegan en el dashboard.
+# Supabase Auth no manda correos: los de las cuentas (acceso, restablecer,
+# cambio de email, contraseña cambiada) los arma la app y salen por Resend
+# (lib/auth/accountMail.ts). Los links usan el token de generateLink y van a
+# /auth/confirm. El aviso de contraseña cambiada de Supabase queda apagado
+# (también en el dashboard de producción) porque lo manda la app.
 [auth.email.template.invite]
 subject = "Te invitaron al panel KYB de Peyo"
 content_path = "./supabase/templates/invite.html"
 
-[auth.email.template.recovery]
-subject = "Restablecé tu contraseña del panel KYB"
-content_path = "./supabase/templates/recovery.html"
-
-[auth.email.template.email_change]
-subject = "Confirmá tu nuevo email del panel KYB"
-content_path = "./supabase/templates/email_change.html"
-
-# Aviso al usuario cuando su contraseña cambia (si no fue él, se entera).
 [auth.email.notification.password_changed]
-enabled = true
-subject = "Tu contraseña del panel KYB cambió"
-content_path = "./supabase/templates/password_changed.html"
+enabled = false
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

@@ -4,13 +4,13 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { KeyRound, LoaderCircle } from "lucide-react";
-import { createBrowserSupabase } from "@/lib/supabase/client";
-import { authErrorKey } from "@/lib/auth/authErrors";
 import { AuthAlert, authButtonCls } from "@/components/auth/authUi";
 import { NewPasswordFields, newPasswordReady } from "@/components/auth/NewPasswordFields";
+import { completePasswordResetAction } from "./actions";
 
 export function ResetForm() {
   const t = useTranslations("auth");
+  const tAll = useTranslations();
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -22,10 +22,13 @@ export function ResetForm() {
     if (!newPasswordReady(password, confirm)) return;
     setLoading(true);
     setError(null);
-    const { error } = await createBrowserSupabase().auth.updateUser({ password });
-    if (error) {
+    const res = await completePasswordResetAction(password).catch(() => ({
+      ok: false as const,
+      error: "auth.errGeneric",
+    }));
+    if (!res.ok) {
       setLoading(false);
-      setError(t(authErrorKey(error)));
+      setError(tAll(res.error));
       return;
     }
     // La sesión del link ya es válida: directo al panel.

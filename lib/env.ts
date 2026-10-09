@@ -38,6 +38,10 @@ export const env = {
   // que ser de un dominio verificado en Resend: el de prueba (resend.dev) solo
   // entrega al dueño de la cuenta. Sin él, en producción no se envía.
   applicantEmailFrom: () => process.env.APPLICANT_EMAIL_FROM ?? "",
+  // Secreta de Cloudflare Turnstile para "Olvidé mi contraseña", que valida el
+  // token en el server (el link lo genera la app, no Supabase). Sin ella no se
+  // verifica el captcha y queda solo el rate limit.
+  turnstileSecretKey: () => process.env.TURNSTILE_SECRET_KEY?.trim() ?? "",
   // --- Traducción con IA (formularios y respuestas) ---
   // `mock` por defecto: un entorno sin configurar nunca gasta tokens.
   translateProvider: () => process.env.TRANSLATE_PROVIDER ?? "mock",

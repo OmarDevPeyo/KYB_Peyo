@@ -107,7 +107,9 @@
     "suspendedContact": "Please contact the administration team:",
     "suspendedNoContact": "Peyo administration",
     "suspendedAs": "Signed in as {email}.",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "errMailNotConfigured": "Email sending isn't configured. Let the administrators know.",
+    "errMailFailed": "The email couldn't be sent. Try again in a few minutes."
   },
   "nav": {
     "requests": "Requests",
@@ -148,7 +150,7 @@
     "newEmail": "New email",
     "currentPassword": "Current password",
     "sendConfirmation": "Send confirmation",
-    "emailSent": "We sent a link to your current email and another to {email}. The change applies once you confirm both.",
+    "emailSent": "We sent a link to {email}: the change applies once you open it. Your current email gets a notice.",
     "emailChanged": "Done: your email is now {email}.",
     "passwordTitle": "Password",
     "passwordDescription": "Changing it signs out your other open sessions.",

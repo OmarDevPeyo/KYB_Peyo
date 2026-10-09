@@ -48,7 +48,6 @@ export async function mailRate(actor: Analyst): Promise<string | null> {
  * {{ .ConfirmationURL }}.
  */
 export const inviteRedirect = () => `${publicEnv.appUrl()}/auth/reset?invite=1`;
-export const resetRedirect = () => `${publicEnv.appUrl()}/auth/reset`;
 
 /** Traduce los errores de los triggers y constraints de 0028. */
 export function dbErrorKey(error: { message?: string; code?: string } | null): string {

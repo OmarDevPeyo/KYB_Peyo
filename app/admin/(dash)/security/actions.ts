@@ -5,6 +5,9 @@ import { requireAnalyst, type Analyst } from "@/lib/auth/admin";
 import { checkCurrentPassword as checkPassword } from "@/lib/auth/stepUp";
 import { passwordIssues } from "@/lib/auth/passwordPolicy";
 import { isEmail, normalizeEmail } from "@/lib/auth/accountRules";
+import { findAuthUserByEmail } from "@/lib/auth/accounts";
+import { sendEmailChangeMails, sendPasswordChangedMail } from "@/lib/auth/accountMail";
+import { consumeRate } from "@/lib/auth/rateLimit";
 import { logAudit } from "@/lib/kyb/service";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -71,13 +74,18 @@ export async function changePasswordAction(
     actorUserId: analyst.userId,
     action: "password_changed",
   });
+  await sendPasswordChangedMail(analyst.email);
   return { ok: true };
 }
 
+/** Pedidos de cambio de email por usuario y minuto (cada uno manda 2 correos). */
+const EMAIL_CHANGES_PER_MIN = 3;
+
 /**
- * Cambio de email. Pide la contraseña actual; Supabase manda un link a CADA
- * dirección (doble confirmación) y recién cambia cuando se confirman las dos.
- * `analysts.email` se actualiza solo (trigger de 0026).
+ * Cambio de email. Pide la contraseña actual; la app manda (Resend) el link de
+ * confirmación a la dirección nueva y un aviso a la vieja. El email cambia
+ * cuando se confirma desde la nueva ("Secure email change" apagado en
+ * Supabase). `analysts.email` se actualiza solo (trigger de 0026).
  */
 export async function changeEmailAction(
   newEmail: string,
@@ -91,16 +99,12 @@ export async function changeEmailAction(
   const check = await checkCurrentPassword(analyst, currentPassword);
   if (check !== "ok") return { ok: false, error: PASSWORD_ERRORS[check] };
 
-  const supabase = await createServerSupabase();
-  const { error } = await supabase.auth.updateUser({ email });
-  if (error) {
-    const known: Record<string, string> = {
-      email_exists: "auth.errEmailTaken",
-      email_address_invalid: "auth.errEmailInvalid",
-      over_email_send_rate_limit: "auth.errEmailRateLimit",
-    };
-    return { ok: false, error: known[error.code ?? ""] ?? "auth.errGeneric" };
+  if (!(await consumeRate(`emailchange:${analyst.userId}`, EMAIL_CHANGES_PER_MIN)).allowed) {
+    return { ok: false, error: "auth.errEmailRateLimit" };
   }
+  if (await findAuthUserByEmail(email)) return { ok: false, error: "auth.errEmailTaken" };
+  const sent = await sendEmailChangeMails(analyst.email, email);
+  if (!sent.ok) return sent;
 
   await logAudit({
     requestId: null,

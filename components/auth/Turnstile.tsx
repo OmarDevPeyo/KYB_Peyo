@@ -6,10 +6,11 @@ import { useTheme } from "next-themes";
 import { publicEnv } from "@/lib/env.public";
 
 /**
- * Widget de Cloudflare Turnstile. Supabase Auth valida el token (captcha
- * nativo, ver [auth.captcha] en supabase/config.toml): así la protección cubre
- * también a quien llame a /auth/v1 directo con la anon key, que es pública, y
- * no solo a quien use este formulario.
+ * Widget de Cloudflare Turnstile. En el login valida el token Supabase Auth
+ * (captcha nativo, ver [auth.captcha] en supabase/config.toml): así la
+ * protección cubre también a quien llame a /auth/v1 directo con la anon key,
+ * que es pública. En "Olvidé mi contraseña" lo valida la app
+ * (lib/auth/turnstile.ts), porque el correo lo manda ella.
  *
  * Sin `NEXT_PUBLIC_TURNSTILE_SITE_KEY` no renderiza nada (captcha apagado).
  */

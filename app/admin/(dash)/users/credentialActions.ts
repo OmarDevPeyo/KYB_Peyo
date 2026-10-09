@@ -5,6 +5,7 @@ import { isEmail, normalizeEmail, type Role } from "@/lib/auth/accountRules";
 import { listOrgs } from "@/lib/auth/tenant";
 import { isUuid } from "@/lib/auth/tenantRules";
 import { passwordIssues } from "@/lib/auth/passwordPolicy";
+import { sendRecoveryMail } from "@/lib/auth/accountMail";
 import { logAudit } from "@/lib/kyb/service";
 import { sendAlert } from "@/lib/mail/alert";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -13,7 +14,6 @@ import {
   inviteRedirect,
   loadTarget,
   mailRate,
-  resetRedirect,
   revalidateAccounts,
   stepUp,
   type AccountResult,
@@ -194,11 +194,8 @@ export async function sendResetLinkAction(userId: string): Promise<AccountResult
   const limited = await mailRate(actor);
   if (limited) return { ok: false, error: limited };
 
-  // Con service role GoTrue no pide captcha.
-  const { error } = await createServiceClient().auth.resetPasswordForEmail(target.email, {
-    redirectTo: resetRedirect(),
-  });
-  if (error) return { ok: false, error: authErrorKey(error) };
+  const sent = await sendRecoveryMail(target.email);
+  if (!sent.ok) return sent;
 
   await logAudit({
     requestId: null,

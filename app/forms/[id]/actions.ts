@@ -1,11 +1,11 @@
 "use server";
 
 import { randomUUID } from "crypto";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createRequest } from "@/lib/kyb/service";
 import { getPublishedForm } from "@/lib/forms/store";
 import { consumeRate } from "@/lib/auth/rateLimit";
+import { clientIp } from "@/lib/request/clientIp";
 
 /**
  * Intakes por minuto y por IP. Holgado para un humano llenando el formulario
@@ -13,14 +13,6 @@ import { consumeRate } from "@/lib/auth/rateLimit";
  * Va por formulario para que el abuso de uno no bloquee a los demás.
  */
 const INTAKE_PER_MIN = 10;
-
-/** IP del solicitante según el proxy. En Vercel la pone la plataforma. */
-async function clientIp(): Promise<string> {
-  const h = await headers();
-  const forwarded = h.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  return h.get("x-real-ip") ?? "desconocida";
-}
 
 /**
  * Intake público: crea una solicitud real para un formulario PUBLICADO y

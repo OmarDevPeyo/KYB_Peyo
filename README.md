@@ -46,8 +46,11 @@ PROVISION_PASSWORD='...' npm run provision -- apply   # crea orgs y usuarios del
 npm run dev                         # http://localhost:3000
 ```
 
-Studio de Supabase: http://127.0.0.1:54323 · Correos de Auth (recuperación,
-invitación): Mailpit en http://127.0.0.1:54324
+Studio de Supabase: http://127.0.0.1:54323 · Correos de las cuentas (acceso,
+restablecer, cambio de email): los manda la app por Resend; sin `RESEND_API_KEY`
+y `APPLICANT_EMAIL_FROM` en `.env.local` se imprimen en la consola de
+`npm run dev`. Supabase Auth no manda correos (Mailpit en
+http://127.0.0.1:54324 tiene que quedar vacío).
 
 ### Variables de entorno
 
@@ -256,12 +259,17 @@ Antes del push que aplica `0028_accounts.sql`:
 - En el SQL editor de producción, `select count(*) from auth.sessions;` tiene
   que andar como `postgres`. `session_alive()` (security definer) lo lee dentro
   de la RLS: si no tuviera permiso, el panel dejaría de ver datos.
-- **Authentication → Emails → SMTP**: Resend. El remitente de Supabase no
-  alcanza para invitaciones y links de restablecer.
-- **Emails → Templates**: pegar de nuevo las de `supabase/templates/`; los links
-  ahora apuntan a `/auth/confirm` y `/auth/forgot`.
-- **URL Configuration**: Site URL = `NEXT_PUBLIC_APP_URL`; en Redirect URLs,
-  `<app>/auth/reset` y `<app>/auth/reset?invite=1`.
+- Los correos de las cuentas los manda la app por Resend, no Supabase
+  (`lib/auth/accountMail.ts`). En Vercel: `NEXT_PUBLIC_APP_URL` (la URL real:
+  sin ella, en producción no se mandan), `RESEND_API_KEY`,
+  `APPLICANT_EMAIL_FROM` (dominio verificado en Resend) y, con captcha,
+  `TURNSTILE_SECRET_KEY`.
+- En el dashboard de Supabase: **Authentication → Emails**, apagar
+  "Secure email change" (el link va solo a la dirección nueva) y la
+  notificación "Password changed" (la manda la app). SMTP y plantillas de
+  Supabase ya no hacen falta.
+- **URL Configuration**: Site URL = `NEXT_PUBLIC_APP_URL` (higiene: los correos
+  ya no lo usan).
 
 Después del deploy:
 

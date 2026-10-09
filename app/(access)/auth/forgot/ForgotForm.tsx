@@ -3,17 +3,17 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useTranslations } from "next-intl";
 import { LoaderCircle, Mail } from "lucide-react";
-import { createBrowserSupabase } from "@/lib/supabase/client";
-import { authErrorKey } from "@/lib/auth/authErrors";
 import { Turnstile, turnstileEnabled, type TurnstileHandle } from "@/components/auth/Turnstile";
 import { AuthAlert, AuthLabel, authButtonCls, authInputCls } from "@/components/auth/authUi";
+import { requestPasswordResetAction } from "./actions";
 
 /**
- * Pide el correo de recuperación. El link lo arma nuestra plantilla
- * (supabase/templates/recovery.html) y lleva a /auth/confirm.
+ * Pide el correo de recuperación. Lo arma y lo manda la app (Resend); el link
+ * lleva a /auth/confirm.
  */
 export function ForgotForm() {
   const t = useTranslations("auth");
+  const tAll = useTranslations();
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,16 +30,15 @@ export function ForgotForm() {
     }
     setLoading(true);
     setError(null);
-    const { error } = await createBrowserSupabase().auth.resetPasswordForEmail(email.trim(), {
-      captchaToken: captcha ?? undefined,
-    });
+    // La acción responde lo mismo exista o no la cuenta (ver actions.ts).
+    const res = await requestPasswordResetAction(email, captcha).catch(() => ({
+      ok: false as const,
+      error: "auth.errGeneric",
+    }));
     setLoading(false);
     turnstile.current?.reset();
-    // Mismo mensaje exista o no la cuenta: si no, este formulario serviría para
-    // averiguar qué emails tienen acceso al panel. Solo se muestran los errores
-    // que no dependen de la cuenta (captcha, límite de envíos).
-    if (error && ["captcha_failed", "over_email_send_rate_limit", "over_request_rate_limit"].includes(error.code ?? "")) {
-      setError(t(authErrorKey(error)));
+    if (!res.ok) {
+      setError(tAll(res.error));
       return;
     }
     setSent(true);

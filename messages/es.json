@@ -107,7 +107,9 @@
     "suspendedContact": "Por favor, contactá a administración:",
     "suspendedNoContact": "Administración de Peyo",
     "suspendedAs": "Sesión iniciada como {email}.",
-    "signOut": "Cerrar sesión"
+    "signOut": "Cerrar sesión",
+    "errMailNotConfigured": "El envío de correos no está configurado. Avisá a administración.",
+    "errMailFailed": "No se pudo enviar el correo. Probá de nuevo en unos minutos."
   },
   "nav": {
     "requests": "Solicitudes",
@@ -148,7 +150,7 @@
     "newEmail": "Nuevo email",
     "currentPassword": "Contraseña actual",
     "sendConfirmation": "Enviar confirmación",
-    "emailSent": "Te mandamos un link a tu email actual y otro a {email}. El cambio se aplica cuando confirmes los dos.",
+    "emailSent": "Te mandamos un link a {email}: el cambio se aplica cuando lo abras. A tu email actual le llega un aviso.",
     "emailChanged": "Listo: tu email ahora es {email}.",
     "passwordTitle": "Contraseña",
     "passwordDescription": "Al cambiarla se cierran tus otras sesiones abiertas.",
