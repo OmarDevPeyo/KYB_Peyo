@@ -150,6 +150,9 @@ export async function POST(req: NextRequest) {
     externalRef: external_ref,
     ttlHours: ttl_hours,
     form: { id: choice.formId, revision: choice.revision },
+    // Congelada como en el intake público: si el formulario se edita después,
+    // la solicitud sigue con lo que reporta su `form_revision`.
+    formDefinition: choice.definition,
     apiKeyId: g.keyId,
     webhookEndpointId: webhook_endpoint_id ?? null,
     returnUrl: return_url ?? null,

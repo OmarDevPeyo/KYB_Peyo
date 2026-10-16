@@ -73,9 +73,18 @@ export async function logAudit(input: AuditInput) {
   });
 }
 
+/** {@link FormChoice} más la definición del formulario elegido. */
+type RequestFormChoice =
+  | (Extract<FormChoice, { ok: true }> & { definition: unknown })
+  | Extract<FormChoice, { ok: false }>;
+
 /**
  * Formulario que usará una solicitud nueva de la org `orgId` (reglas en
  * lib/forms/formChoice.ts). Lee los candidatos y delega la decisión.
+ *
+ * Devuelve también la definición, leída de la MISMA fila que la revisión: es
+ * el snapshot que se congela en la solicitud, así que tienen que ser del mismo
+ * momento.
  */
 export async function chooseRequestForm(input: {
   orgId: string;
@@ -83,19 +92,30 @@ export async function chooseRequestForm(input: {
   requestedId?: string | null;
   /** Formulario por defecto de la API key (`api_keys.default_form_id`). */
   keyDefaultId?: string | null;
-}): Promise<FormChoice> {
+}): Promise<RequestFormChoice> {
   const supabase = createServiceClient();
-  const cols = "id, org_id, status, version";
+  type Candidate = FormCandidate & { definition?: unknown };
+  const cols = "id, org_id, status, version, definition";
   const byId = async (id: string) =>
     ((await supabase.from("forms").select(cols).eq("id", id).maybeSingle()).data ??
-      null) as FormCandidate | null;
+      null) as Candidate | null;
+  const withDefinition = (
+    choice: FormChoice,
+    candidates: (Candidate | null)[],
+  ): RequestFormChoice =>
+    choice.ok
+      ? {
+          ...choice,
+          definition: candidates.find((c) => c?.id === choice.formId)?.definition ?? null,
+        }
+      : choice;
 
   if (input.requestedId) {
-    return pickRequestForm({
-      orgId: input.orgId,
-      requestedId: input.requestedId,
-      requested: await byId(input.requestedId),
-    });
+    const requested = await byId(input.requestedId);
+    return withDefinition(
+      pickRequestForm({ orgId: input.orgId, requestedId: input.requestedId, requested }),
+      [requested],
+    );
   }
 
   const [keyDefault, latest] = await Promise.all([
@@ -109,11 +129,11 @@ export async function chooseRequestForm(input: {
       .limit(1)
       .maybeSingle(),
   ]);
-  return pickRequestForm({
-    orgId: input.orgId,
-    keyDefault,
-    latestPublished: (latest.data ?? null) as FormCandidate | null,
-  });
+  const latestPublished = (latest.data ?? null) as Candidate | null;
+  return withDefinition(
+    pickRequestForm({ orgId: input.orgId, keyDefault, latestPublished }),
+    [keyDefault, latestPublished],
+  );
 }
 
 /** Crea una solicitud KYB y devuelve el token en claro (solo aquí). */
@@ -124,7 +144,7 @@ export async function createRequest(input: {
   ttlHours?: number;
   /** Formulario ya elegido (ver {@link chooseRequestForm}) y su revisión vigente. */
   form: { id: string; revision: number | null };
-  /** Snapshot de la definición, si el llamador la tiene (intake público). */
+  /** Snapshot de la definición (intake público y API). */
   formDefinition?: unknown;
   apiKeyId?: string | null;
   webhookEndpointId?: string | null;

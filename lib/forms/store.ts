@@ -65,7 +65,8 @@ export async function getFormForRequest(
 /**
  * Definición contra la que operar una solicitud: prioriza el snapshot congelado
  * en la solicitud (lo que el solicitante realmente llenó) y, si no existe o es
- * inválido (solicitudes viejas / creadas por API), cae al form vigente por id,
+ * inválido (solicitudes viejas, incluidas las creadas por API antes de que la
+ * congelaran), cae al form vigente por id,
  * y si tampoco hay id, al publicado por defecto de la org de la solicitud.
  */
 export async function resolveRequestDefinition(
