@@ -97,7 +97,7 @@ export default async function RequestDetail({
       .order("uploaded_at", { ascending: true }),
     supabase
       .from("aml_checks")
-      .select("id, provider, status, result, created_at, feature, field_key, score")
+      .select("id, provider, status, result, created_at, feature, field_key, score, superseded_at")
       .eq("request_id", id)
       .order("created_at", { ascending: false }),
     // Costo DIDIT, solo para el admin (es la tarifa del proveedor a la
@@ -241,7 +241,17 @@ export default async function RequestDetail({
   const currentPaths = new Set(
     Object.values(formData).flatMap((v) => fileRefsOf(v).map((r) => r.path)),
   );
-  const docTag = (d: { doc_type: string; storage_path: string; renewal_id?: string | null }) => {
+  // Correcciones: un archivo enviado que ya no está en las respuestas es la
+  // versión anterior de una pregunta que se volvió a pedir (se conserva).
+  const lastSubmitAt = request.submitted_at
+    ? new Date(request.submitted_at as string).getTime()
+    : null;
+  const docTag = (d: {
+    doc_type: string;
+    storage_path: string;
+    renewal_id?: string | null;
+    uploaded_at?: string | null;
+  }) => {
     if (currentPaths.has(d.storage_path)) return null;
     const round = d.renewal_id ? renewalById.get(d.renewal_id) : undefined;
     if (round && round.state !== "accepted") {
@@ -250,7 +260,11 @@ export default async function RequestDetail({
         state: tExp(`renewalState_${round.state}`),
       });
     }
-    return round || renewedKeys.has(d.doc_type) ? tExp("docTagPrevious") : null;
+    if (round || renewedKeys.has(d.doc_type)) return tExp("docTagPrevious");
+    const uploadedAt = d.uploaded_at ? new Date(d.uploaded_at).getTime() : null;
+    return lastSubmitAt != null && uploadedAt != null && uploadedAt <= lastSubmitAt
+      ? tExp("docTagPrevious")
+      : null;
   };
 
   const toDocRow = (d: {
@@ -433,12 +447,14 @@ export default async function RequestDetail({
         )}
         {(aml ?? []).map((c, i) => {
           // `aml` viene del más nuevo al más viejo: un check con otro más nuevo
-          // del mismo documento describe la versión anterior (renovación).
+          // del mismo documento describe la versión anterior (renovación). Uno
+          // con `superseded_at` es de una respuesta que se volvió a pedir.
           const superseded =
-            c.feature === "id_verification" &&
-            (aml ?? [])
-              .slice(0, i)
-              .some((n) => n.feature === c.feature && n.field_key === c.field_key);
+            Boolean(c.superseded_at) ||
+            (c.feature === "id_verification" &&
+              (aml ?? [])
+                .slice(0, i)
+                .some((n) => n.feature === c.feature && n.field_key === c.field_key));
           const image =
             c.field_key && !superseded ? imageForKey(c.field_key) : undefined;
           const field = c.field_key ? fieldByKey.get(c.field_key) : undefined;

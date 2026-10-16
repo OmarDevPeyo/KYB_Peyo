@@ -68,6 +68,9 @@ export default async function RequestReport({
       .from("aml_checks")
       .select("id, provider, status, result, created_at, feature, field_key, score")
       .eq("request_id", id)
+      // El informe es la foto de lo vigente: las reemplazadas por una
+      // corrección quedan en el panel, con su rótulo.
+      .is("superseded_at", null)
       // En el informe cada verificación va bajo su pregunta: el orden natural
       // es cronológico ascendente, no el "más reciente primero" del panel.
       .order("created_at", { ascending: true }),

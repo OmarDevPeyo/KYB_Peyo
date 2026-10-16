@@ -88,6 +88,8 @@ export async function notifyClient(
       .from("aml_checks")
       .select("provider, status, result, created_at, updated_at")
       .eq("request_id", requestId)
+      // Mismo `aml[]` que GET /:id: sin las reemplazadas por una corrección.
+      .is("superseded_at", null)
       .order("created_at", { ascending: false });
 
     const eventId = `evt_${generateToken(12)}`;

@@ -90,7 +90,9 @@ async function syncBatch(ids: string[], liveDefs: Map<string, FormDefinition>): 
         "id, request_id, feature, field_key, status, created_at, expiration_date:result->id_verification->>expiration_date",
       )
       .in("request_id", ids)
-      .eq("feature", "id_verification"),
+      .eq("feature", "id_verification")
+      // Una reemplazada por una corrección es del documento anterior.
+      .is("superseded_at", null),
     supabase.from("document_expirations").select(EXPIRATION_COLUMNS).in("request_id", ids),
     // Cuándo se subió cada archivo: un check de DIDIT anterior es de otro documento.
     supabase.from("kyb_documents").select("storage_path, uploaded_at").in("request_id", ids),

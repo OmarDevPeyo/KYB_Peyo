@@ -14,7 +14,6 @@ import { dropForeignFileRefs, isOwnedPath, mimeAllowed } from "@/lib/kyb/storage
 import { reachableFields } from "@/lib/forms/logic";
 import { formDefinitionSchema, type FormDefinition } from "@/lib/forms/definition";
 import { resolveRequestSummary, type RequestSummary } from "@/lib/forms/internalFields";
-import { fileRefsOf } from "@/lib/forms/answers";
 import { FORM_VERSION } from "@/lib/forms/schema";
 import { PRE_SUBMIT_STATUSES, acceptsApplicantWrites } from "@/lib/kyb/applicantWrites";
 import type {
@@ -878,12 +877,15 @@ export async function runVerifications(
       }
 
       // Reanudable: no re-hacer verificaciones ya exitosas y limpiar errores
-      // viejos para no acumular filas en cada reintento.
+      // viejos para no acumular filas en cada reintento. Las reemplazadas por
+      // una corrección no cuentan: describen la respuesta anterior, y su
+      // pregunta se vuelve a verificar.
       const { data: existing } = await supabase
         .from("aml_checks")
         .select("feature, field_key, status")
         .eq("request_id", requestId)
-        .eq("provider", "didit");
+        .eq("provider", "didit")
+        .is("superseded_at", null);
       const skip = new Set<string>();
       for (const c of existing ?? []) {
         if (c.status !== "error") skip.add(`${c.feature}:${c.field_key ?? ""}`);
@@ -893,7 +895,8 @@ export async function runVerifications(
         .delete()
         .eq("request_id", requestId)
         .eq("provider", "didit")
-        .eq("status", "error");
+        .eq("status", "error")
+        .is("superseded_at", null);
 
       // Inserta cada verificación apenas completa (sobrevive a un corte del background).
       const insertRow = async (r: DiditCheckRow) => {
@@ -1049,8 +1052,9 @@ export async function decideRequest(
 
 /**
  * Devuelve una solicitud ya enviada al solicitante para que corrija preguntas
- * puntuales: borra las respuestas marcadas del blob (dejándolas disponibles de
- * nuevo), guarda el set de correcciones + notas, re-emite el link y pasa a
+ * puntuales: quita las respuestas marcadas del blob (dejándolas disponibles de
+ * nuevo, sin borrar archivos ni verificaciones), guarda el set de correcciones
+ * + notas, re-emite el link y pasa a
  * `changes_requested`. Idempotente vía compare-and-set: solo actúa sobre
  * `submitted`/`under_review`. NO dispara el webhook (lo hace el llamador con
  * `after(...)`, como `decision.made`).
@@ -1130,20 +1134,20 @@ export async function requestChanges(
     };
   }
 
-  // Borra del blob las respuestas marcadas (y sus archivos, para re-subida limpia).
+  // Quita del borrador las respuestas marcadas, para que el solicitante las
+  // vuelva a responder. Lo enviado NO se borra (0031): los archivos quedan en
+  // Storage y en kyb_documents como versión anterior —lo vigente es lo que está
+  // en las respuestas, igual que en las renovaciones— y los valores quedan en la
+  // auditoría de esta ronda.
   const { data: responseRow } = await supabase
     .from("kyb_form_responses")
     .select("data")
     .eq("request_id", requestId)
     .maybeSingle();
   const answers = { ...((responseRow?.data as Record<string, unknown>) ?? {}) };
+  const previous: Record<string, unknown> = {};
   for (const { key } of marked) {
-    for (const ref of fileRefsOf(answers[key])) {
-      // Solo archivos de esta solicitud: el path viene del blob de respuestas, y
-      // en filas anteriores a dropForeignFileRefs podía apuntar a otra.
-      if (!isOwnedPath(ref.path, requestId)) continue;
-      await deleteDocument({ requestId, storagePath: ref.path });
-    }
+    if (key in answers) previous[key] = answers[key];
     delete answers[key];
   }
   await supabase
@@ -1153,15 +1157,18 @@ export async function requestChanges(
       { onConflict: "request_id" },
     );
 
-  // Re-verificar solo lo corregido: borra los aml_checks de esas preguntas.
-  // EXCEPTO kyb_registry: un ciclo facturado es evidencia y nunca se borra ni
-  // se repite automáticamente — la re-validación es un nuevo run manual del
-  // analista. (`or` en vez de `neq` para no excluir filas con feature NULL.)
+  // Re-verificar solo lo corregido: los aml_checks de esas preguntas quedan
+  // reemplazados en esta ronda. Siguen como evidencia, pero dejan de ser los
+  // vigentes y el reenvío vuelve a correrlos (runVerifications los ignora).
+  // EXCEPTO kyb_registry: un ciclo facturado nunca se repite automáticamente —
+  // la re-validación es un nuevo run manual del analista. (`or` en vez de `neq`
+  // para no excluir filas con feature NULL.)
   await supabase
     .from("aml_checks")
-    .delete()
+    .update({ superseded_at: new Date().toISOString(), superseded_round: round })
     .eq("request_id", requestId)
     .in("field_key", marked.map((m) => m.key))
+    .is("superseded_at", null)
     .or("feature.is.null,feature.neq.kyb_registry");
 
   await logAudit({
@@ -1170,7 +1177,9 @@ export async function requestChanges(
     action: "changes_requested",
     fromStatus: from,
     toStatus: "changes_requested",
-    metadata: { round, source: opts.source, fields: marked },
+    // `previous`: lo que había en cada pregunta marcada antes de volver a
+    // pedirla (en los archivos, sus referencias en Storage).
+    metadata: { round, source: opts.source, fields: marked, previous },
   });
 
   const { token, expiresAt, invitationUrl } = await issueToken(

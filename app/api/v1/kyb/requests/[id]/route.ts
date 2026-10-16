@@ -40,6 +40,9 @@ export async function GET(
       .from("aml_checks")
       .select("provider, status, result, created_at, updated_at")
       .eq("request_id", id)
+      // Las reemplazadas por una corrección se conservan, pero no son las
+      // vigentes: antes se borraban, así que el contrato no las incluye.
+      .is("superseded_at", null)
       .order("created_at", { ascending: false }),
     loadRequestExpirations(id),
   ]);

@@ -309,8 +309,8 @@ Query: `?expires_in=<segundos>` (60–86400, default 3600).
 Las `url` son firmadas y **caducan**; genera una consulta nueva cuando las necesites.
 
 `current` dice si el archivo es el que está **hoy** en las respuestas. Cuando se
-renueva un documento vencido (ver `document.renewed` en §6), el anterior se conserva
-como historial con `current: false`. Lo que el usuario sube en una renovación que
+renueva un documento vencido (ver `document.renewed` en §6) o se pide corregir una
+pregunta de archivo (§4.8), el anterior se conserva como historial con `current: false`. Lo que el usuario sube en una renovación que
 nuestro analista todavía no aceptó **no se lista**: aparece recién al aceptarse.
 
 `mime` y `size` son los que **observa el servidor** en el archivo almacenado, no los
@@ -362,10 +362,16 @@ borrador; solo rota el token.
 
 ### 4.8 Solicitar correcciones — `POST /requests/:id/request-changes`
 
-Devuelve la solicitud al usuario para que **corrija preguntas puntuales**. Borra
-solo las respuestas marcadas (sus archivos incluidos), deja el resto del borrador
-intacto, pasa el estado a `changes_requested` y **re-emite el link**. Requiere que
-la solicitud esté `submitted` o `under_review`.
+Devuelve la solicitud al usuario para que **corrija preguntas puntuales**. Quita
+del borrador solo las respuestas marcadas para que las vuelva a responder, deja el
+resto intacto, pasa el estado a `changes_requested` y **re-emite el link**. Requiere
+que la solicitud esté `submitted` o `under_review`.
+
+**Nada de lo enviado se borra.** Los archivos de las preguntas marcadas se conservan
+y siguen en `GET /:id/documents` con `current: false` (§4.5). Las verificaciones de
+esas preguntas también se conservan, pero dejan de listarse en `aml[]`: describen la
+respuesta anterior, y al reenviar se vuelven a correr sobre la nueva. La validación
+registral (`kyb_registry`) no se toca: un ciclo facturado nunca se repite solo.
 
 **Body (JSON):**
 
