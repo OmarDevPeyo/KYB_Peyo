@@ -447,6 +447,10 @@ aunque el formulario ya vaya por la 8.
 - Redirige a tu usuario al `invitationUrl`. Llena el formulario (documentos, selfie, etc.).
 - **Autosave**: si se sale a la mitad y vuelve al **mismo `invitationUrl`** (mientras esté `created`/`in_progress`), **se restauran sus datos**. Guarda el `invitationUrl` de tu lado.
 - Si el link se pierde o expira, usa `POST /:id/invitation` para uno nuevo (mismo borrador).
+- **Una vez enviado, el link ya no cambia nada**: ni el borrador, ni los documentos, ni un
+  reenvío. Vuelve a aceptar cambios solo si se piden correcciones (`changes_requested`, §4.8),
+  y en esa ronda el usuario puede quitar únicamente lo que subió en la ronda: lo que ya envió
+  se conserva.
 - Si pasaste `return_url`, al enviar el formulario el usuario es redirigido de vuelta a tu app.
 
 ---

@@ -11,9 +11,10 @@ import {
   recordDocument,
   checkStoredUpload,
   deleteDocument,
-  isTerminal,
+  documentUploadedAt,
   DOCUMENTS_BUCKET,
 } from "@/lib/kyb/service";
+import { acceptsApplicantWrites, canApplicantDeleteDocument } from "@/lib/kyb/applicantWrites";
 import { notifyClient } from "@/lib/kyb/webhook";
 import { syncRequestExpirations } from "@/lib/kyb/expirations";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -35,7 +36,9 @@ async function resolveOpen(token: string): Promise<Resolved> {
   if (!req) return { ok: false, error: "Invitación inválida." };
   if (req.status === "expired")
     return { ok: false, error: "La invitación expiró." };
-  if (isTerminal(req.status))
+  // Enviada, en revisión o decidida, el link no escribe: la página ya muestra
+  // «recibido», pero estos actions se pueden invocar a mano por POST.
+  if (!acceptsApplicantWrites(req.status))
     return { ok: false, error: "La solicitud ya fue enviada." };
   return { ok: true, req };
 }
@@ -251,6 +254,14 @@ export async function deleteDocumentAction(
   // Solo se pueden borrar archivos que pertenecen a esta solicitud.
   if (!isOwnedPath(storagePath, r.req.id)) {
     return { ok: false, error: "Documento inválido." };
+  }
+  // En una corrección, lo que ya se envió se conserva: solo se quita lo subido
+  // en esta ronda.
+  if (r.req.submitted_at) {
+    const uploadedAt = await documentUploadedAt(r.req.id, storagePath);
+    if (!canApplicantDeleteDocument({ submittedAt: r.req.submitted_at, uploadedAt })) {
+      return { ok: false, error: "Ese documento ya se envió y se conserva." };
+    }
   }
   try {
     await deleteDocument({ requestId: r.req.id, storagePath });

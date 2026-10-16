@@ -16,6 +16,7 @@ import { formDefinitionSchema, type FormDefinition } from "@/lib/forms/definitio
 import { resolveRequestSummary, type RequestSummary } from "@/lib/forms/internalFields";
 import { fileRefsOf } from "@/lib/forms/answers";
 import { FORM_VERSION } from "@/lib/forms/schema";
+import { PRE_SUBMIT_STATUSES, acceptsApplicantWrites } from "@/lib/kyb/applicantWrites";
 import type {
   KybCorrectionField,
   KybCorrections,
@@ -274,11 +275,9 @@ export async function reissueInvitation(
   return { ok: true, invitationUrl, token, expiresAt };
 }
 
-/**
- * Estados "pre-envío" en los que el link de invitación todavía le importa al
- * solicitante. Solo estos se expiran por tiempo y emiten `request.expired`.
- */
-const PRE_SUBMIT_STATUSES: KybStatus[] = ["created", "in_progress", "changes_requested"];
+// Los estados "pre-envío" (PRE_SUBMIT_STATUSES, lib/kyb/applicantWrites.ts) son
+// en los que el link de invitación todavía le importa al solicitante: solo esos
+// se expiran por tiempo y emiten `request.expired`, y solo en esos escribe.
 
 /**
  * Transición atómica a `expired` (compare-and-set): solo cambia si la fila sigue
@@ -709,6 +708,21 @@ export async function recordDocument(input: {
   });
 }
 
+/** Cuándo se registró un archivo de la solicitud, o null si no tiene fila. */
+export async function documentUploadedAt(
+  requestId: string,
+  storagePath: string,
+): Promise<string | null> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("kyb_documents")
+    .select("uploaded_at")
+    .eq("request_id", requestId)
+    .eq("storage_path", storagePath)
+    .maybeSingle();
+  return (data?.uploaded_at as string | undefined) ?? null;
+}
+
 /** Elimina un documento de Storage y su fila de metadatos. */
 export async function deleteDocument(input: {
   requestId: string;
@@ -739,7 +753,9 @@ export async function submitRequest(
     .eq("id", requestId)
     .single();
   if (!req) throw new Error("Solicitud no encontrada");
-  if (isTerminal(req.status)) throw new Error("La solicitud ya está cerrada");
+  // Una solicitud ya enviada no se reenvía por el link: lo enviado es evidencia
+  // y reenviar volvería a pisar las respuestas y a pasar por `submitted`.
+  if (!acceptsApplicantWrites(req.status)) throw new Error("La solicitud ya fue enviada");
 
   // Prune del camino inalcanzable: si el solicitante cambió una bifurcación
   // (p. ej. en el ciclo de correcciones), descarta del blob las respuestas de
@@ -778,7 +794,8 @@ export async function submitRequest(
 
   // `corrections: null` cierra la ronda de correcciones abierta (si venía de
   // `changes_requested`); en el flujo normal ya era null.
-  await supabase
+  // Compare-and-set: dos envíos simultáneos del mismo link no pasan los dos.
+  const { data: locked } = await supabase
     .from("kyb_requests")
     .update({
       status: "submitted",
@@ -786,7 +803,11 @@ export async function submitRequest(
       corrections: null,
       ...(summary ? summaryColumns(summary) : {}),
     })
-    .eq("id", requestId);
+    .eq("id", requestId)
+    .in("status", PRE_SUBMIT_STATUSES)
+    .select("id")
+    .maybeSingle();
+  if (!locked) throw new Error("La solicitud cambió de estado");
   await logAudit({
     requestId,
     actor: "applicant",
