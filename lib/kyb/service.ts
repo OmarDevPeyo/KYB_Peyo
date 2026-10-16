@@ -737,6 +737,32 @@ export async function deleteDocument(input: {
 }
 
 /**
+ * Foto de las respuestas en un momento que cuenta como declaración
+ * (kyb_response_snapshots, 0032): cada envío y cada renovación aceptada.
+ * `kyb_form_responses` se pisa; esto no, la tabla es append-only.
+ */
+export async function snapshotResponses(input: {
+  requestId: string;
+  kind: "submitted" | "renewal_accepted";
+  /** submitted: ronda de correcciones que responde (null = primer envío). renewal_accepted: su ronda. */
+  round: number | null;
+  data: Record<string, unknown>;
+  formRevision: number | null;
+}): Promise<void> {
+  const supabase = createServiceClient();
+  const { error } = await supabase.from("kyb_response_snapshots").insert({
+    request_id: input.requestId,
+    kind: input.kind,
+    round: input.round,
+    data: input.data,
+    form_revision: input.formRevision,
+  });
+  if (error) {
+    throw new Error(`No se pudo guardar la foto de las respuestas: ${error.message}`);
+  }
+}
+
+/**
  * Finaliza el formulario (parte rápida): guarda datos y pasa a `submitted`.
  * Las verificaciones (DIDIT/AML) se disparan aparte con {@link runVerifications}
  * en segundo plano para no bloquear la respuesta al usuario.
@@ -748,7 +774,7 @@ export async function submitRequest(
   const supabase = createServiceClient();
   const { data: req } = await supabase
     .from("kyb_requests")
-    .select("id, status, form_id, form_definition, org_id")
+    .select("id, status, form_id, form_definition, org_id, corrections, form_revision")
     .eq("id", requestId)
     .single();
   if (!req) throw new Error("Solicitud no encontrada");
@@ -790,6 +816,19 @@ export async function submitRequest(
       { request_id: requestId, data: toSave, form_version: FORM_VERSION },
       { onConflict: "request_id" },
     );
+
+  // La foto va ANTES de pasar a `submitted`: si no se puede guardar, el envío
+  // falla y el solicitante reintenta, en vez de quedar una declaración sin
+  // registro. Si después pierde el compare-and-set (otro envío simultáneo), la
+  // foto igual describe lo que mandó.
+  const corrections = (req as { corrections?: KybCorrections | null }).corrections;
+  await snapshotResponses({
+    requestId,
+    kind: "submitted",
+    round: corrections?.round ?? null,
+    data: toSave,
+    formRevision: (req as { form_revision?: number | null }).form_revision ?? null,
+  });
 
   // `corrections: null` cierra la ronda de correcciones abierta (si venía de
   // `changes_requested`); en el flujo normal ya era null.

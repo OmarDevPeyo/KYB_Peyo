@@ -7,7 +7,7 @@ import type { FormDefinition, LocalizedText } from "@/lib/forms/definition";
 import { renewalDefinition, renewalFieldKeys } from "@/lib/forms/expiry";
 import { dispatchDiditReviews, type DiditCheckRow } from "@/lib/didit/verify";
 import { recordCheckCharge } from "@/lib/didit/costs";
-import { logAudit } from "@/lib/kyb/service";
+import { logAudit, snapshotResponses } from "@/lib/kyb/service";
 import { notifyClient } from "@/lib/kyb/webhook";
 import { loadRequestExpirations, syncRequestExpirations } from "@/lib/kyb/expirations";
 
@@ -487,12 +487,13 @@ export async function acceptRenewal(
   );
 
   const current = await answersOf(renewal.request_id);
+  const merged = { ...current, ...pick(renewal.answers, renewal.keys) };
   const { error: upError } = await supabase
     .from("kyb_form_responses")
     .upsert(
       {
         request_id: renewal.request_id,
-        data: { ...current, ...pick(renewal.answers, renewal.keys) },
+        data: merged,
         updated_at: now,
       },
       { onConflict: "request_id" },
@@ -505,6 +506,26 @@ export async function acceptRenewal(
       .update({ state: "submitted", reviewed_by: null, reviewed_by_email: null, reviewed_at: null })
       .eq("id", renewal.id);
     return { ok: false, error: "expirations.errSave" };
+  }
+
+  // Las respuestas se acaban de pisar: queda una foto de cómo quedaron (0032).
+  // Las de antes están en la foto del envío. Un fallo acá no deshace la
+  // aceptación: lo renovado sigue también en la ronda (`answers`).
+  try {
+    const { data: reqRow } = await supabase
+      .from("kyb_requests")
+      .select("form_revision")
+      .eq("id", renewal.request_id)
+      .maybeSingle();
+    await snapshotResponses({
+      requestId: renewal.request_id,
+      kind: "renewal_accepted",
+      round: renewal.round,
+      data: merged,
+      formRevision: (reqRow?.form_revision as number | null | undefined) ?? null,
+    });
+  } catch (e) {
+    console.error(`[renewals] ronda=${renewal.id} sin foto de las respuestas:`, e);
   }
 
   if (renewal.checks?.length) {
