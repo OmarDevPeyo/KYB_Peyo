@@ -3,7 +3,7 @@ import { getRequestByToken } from "@/lib/kyb/service";
 import { resolveRenewal } from "@/lib/kyb/renewals";
 import { expiryStatus, todayUtc } from "@/lib/forms/expiry";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getFormForRequest, resolveRequestDefinition } from "@/lib/forms/store";
+import { resolveRequestDefinition } from "@/lib/forms/store";
 import { reachableSections } from "@/lib/forms/logic";
 import { publicDefinition } from "@/lib/forms/internalFields";
 import { emptyForm } from "@/lib/forms/schema";
@@ -164,12 +164,17 @@ export default async function FormPage({
     return <Notice title={t("receivedTitle")} body={t("receivedBody")} />;
   }
 
-  // Formulario dinámico si hay uno asignado/publicado; si no, fallback al legacy.
-  const form = await getFormForRequest(
+  // Formulario dinámico: la definición de la solicitud (la congelada al
+  // crearla, o el formulario asignado/publicado si no tiene). Es la misma contra
+  // la que se validan el autosave y el envío: mostrar el formulario vivo hacía
+  // que, tras editarlo, el solicitante viera preguntas que el envío rechazaba o
+  // descartaba. Si no hay ninguna, fallback al legacy.
+  const definition = await resolveRequestDefinition(
+    (req as { form_definition?: unknown }).form_definition,
     (req as { form_id?: string | null }).form_id,
     req.org_id,
   );
-  if (form) {
+  if (definition) {
     const locale = await getLocale();
     return (
       <>
@@ -177,7 +182,7 @@ export default async function FormPage({
         <main className="mx-auto w-full max-w-2xl flex-1 p-6">
           <ApplicantForm
             token={token}
-            definition={publicDefinition(form.definition)}
+            definition={publicDefinition(definition)}
             locale={locale}
             initialAnswers={savedData}
             returnUrl={(req as { return_url?: string | null }).return_url ?? undefined}
