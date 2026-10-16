@@ -437,13 +437,17 @@ claves que tu código consume y falle **antes** de desplegar.
 
 #### `form_revision`: cómo fijar tu mapeo
 
-`revision` es el número de revisión del formulario **publicado hoy**. Cada publicación lo
-incrementa.
+`revision` es el número de revisión del formulario **publicado hoy**. Lo incrementa cada
+publicación y cada cambio que se guarda sobre un formulario ya publicado: dos solicitudes
+con la misma revisión vieron exactamente las mismas preguntas.
 
 Las solicitudes llevan la revisión con la que **se crearon**, en `formRevision`
 (`GET /:id`, `GET /:id/answers`) y `form_revision` (webhook). Esa es la que debes usar para
 elegir el mapeo de campos: una solicitud creada bajo la revisión 6 sigue reportando 6
-aunque el formulario ya vaya por la 8.
+aunque el formulario ya vaya por la 8. Además, la solicitud **congela la definición** al
+crearse: si el formulario cambia después, tu usuario sigue llenando la de la revisión 6.
+(Las solicitudes creadas por API antes de esta versión no la congelaron y siguen el
+formulario vigente.)
 
 > `formRevision` es `null` en solicitudes creadas antes de que existiera este campo. Trátalo
 > como "revisión desconocida" y cae a tu mapeo por defecto — no asumas la revisión 1.

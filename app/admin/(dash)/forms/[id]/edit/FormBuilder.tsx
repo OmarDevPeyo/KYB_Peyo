@@ -244,7 +244,13 @@ export function FormBuilder({
     setMsg(null);
     const res = await saveForm(id, { name, definition: def });
     setBusy(false);
-    setMsg(res.ok ? t("saved") : res.error);
+    setMsg(
+      !res.ok
+        ? res.error
+        : res.revision
+          ? t("savedRevision", { revision: res.revision })
+          : t("saved"),
+    );
     if (res.ok) router.refresh();
   }
 

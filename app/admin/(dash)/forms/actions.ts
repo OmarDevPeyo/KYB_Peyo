@@ -14,6 +14,7 @@ import {
 import { isGoogleFormExport, fromGoogleForm } from "@/lib/forms/import-google";
 import { normalizeFormDefinition } from "@/lib/forms/normalize";
 import { expirySignature } from "@/lib/forms/expiry";
+import { revisionAfterSave } from "@/lib/forms/revision";
 import { refreshFormRequestsSummary } from "@/lib/kyb/service";
 import { refreshFormExpirations } from "@/lib/kyb/expirations";
 
@@ -26,7 +27,8 @@ import { refreshFormExpirations } from "@/lib/kyb/expirations";
 export type FormActionErrorCode = "assigned_to_client" | "requests_no_snapshot";
 
 type Result =
-  | { ok: true; id?: string }
+  /** `revision`: la nueva, si guardar un formulario publicado abrió una. */
+  | { ok: true; id?: string; revision?: number }
   | {
       ok: false;
       error: string;
@@ -74,7 +76,7 @@ export async function saveForm(
   payload: { name: string; definition: unknown },
 ): Promise<Result> {
   const analyst = await requireAnalyst();
-  const current = await loadOwnedForm(analyst, id, "id, definition");
+  const current = await loadOwnedForm(analyst, id, "id, definition, status, version");
   if (!current) return NOT_FOUND;
   const parsed = formDefinitionSchema.safeParse(payload.definition);
   if (!parsed.success) {
@@ -82,16 +84,39 @@ export async function saveForm(
   }
   // El builder ya normaliza; esto cubre a quien llame al action sin pasar por él.
   const definition = normalizeFormDefinition(parsed.data);
+  const beforeDef = formDefinitionSchema.safeParse(current.definition);
+
+  // Un cambio sobre un formulario publicado abre una revisión nueva (ver
+  // lib/forms/revision.ts). Se compara contra la definición anterior pasada
+  // por el mismo parse + normalizado, para que un default que Zod completa no
+  // cuente como cambio.
+  const version = (current.version as number | null) ?? null;
+  const revision = revisionAfterSave({
+    status: current.status as string,
+    version,
+    before: beforeDef.success ? normalizeFormDefinition(beforeDef.data) : current.definition,
+    after: definition,
+  });
   const supabase = createServiceClient();
-  const { error } = await supabase
+  let update = supabase
     .from("forms")
     .update({
       name: payload.name?.trim() || "Formulario",
       definition,
       updated_at: new Date().toISOString(),
+      ...(revision != null ? { version: revision } : {}),
     })
     .eq("id", id);
+  // Compare-and-set sobre la revisión: dos guardados simultáneos no abren la
+  // misma revisión con definiciones distintas.
+  if (revision != null) {
+    update = version == null ? update.is("version", null) : update.eq("version", version);
+  }
+  const { data: saved, error } = await update.select("id");
   if (error) return { ok: false, error: error.message };
+  if (!saved?.length) {
+    return { ok: false, error: "El formulario cambió mientras lo editabas. Recarga y vuelve a guardar." };
+  }
 
   // Si cambió qué pregunta da el título o el email, se recalculan sus
   // solicitudes (también las anteriores: es el backfill). Un fallo acá no
@@ -106,7 +131,6 @@ export async function saveForm(
   }
   // Igual con el control de vencimiento: marcar o desmarcar un documento
   // recalcula los vencimientos de todas sus solicitudes (backfill).
-  const beforeDef = formDefinitionSchema.safeParse(current.definition);
   const beforeSignature = beforeDef.success ? expirySignature(beforeDef.data) : null;
   if (beforeSignature !== expirySignature(definition)) {
     try {
@@ -117,7 +141,7 @@ export async function saveForm(
   }
   revalidatePath("/admin/forms");
   revalidatePath(`/admin/forms/${id}/edit`);
-  return { ok: true };
+  return revision != null ? { ok: true, revision } : { ok: true };
 }
 
 export async function setFormStatus(

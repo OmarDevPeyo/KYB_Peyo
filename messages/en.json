@@ -480,6 +480,7 @@
     "unpublished": "Unpublished",
     "save": "Save",
     "saved": "Saved",
+    "savedRevision": "Saved. The published form moves to revision {revision}: new requests use it, existing ones keep theirs.",
     "viewPublic": "Intake link ↗",
     "translate": "Translate",
     "translateMissing": "Translate what's missing",

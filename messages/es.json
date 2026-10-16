@@ -480,6 +480,7 @@
     "unpublished": "Despublicado",
     "save": "Guardar",
     "saved": "Guardado",
+    "savedRevision": "Guardado. El formulario publicado pasa a la revisión {revision}: las solicitudes nuevas la usan y las que ya estaban siguen con la suya.",
     "viewPublic": "Enlace de solicitud ↗",
     "translate": "Traducir",
     "translateMissing": "Traducir lo que falta",
