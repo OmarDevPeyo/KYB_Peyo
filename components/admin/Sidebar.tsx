@@ -36,6 +36,13 @@ export interface SidebarUser {
   isAdmin: boolean;
 }
 
+/** Qué build está sirviendo, para el pie del sidebar. */
+export interface SidebarBuild {
+  version: string;
+  /** SHA corto del commit desplegado; null fuera de Vercel. */
+  commit: string | null;
+}
+
 /**
  * Navegación del panel.
  * - Escritorio (md+): columna fija que se pliega a un riel de íconos. El
@@ -44,9 +51,11 @@ export interface SidebarUser {
  */
 export function Sidebar({
   user,
+  build,
   initialCollapsed,
 }: {
   user: SidebarUser;
+  build: SidebarBuild;
   initialCollapsed: boolean;
 }) {
   const t = useTranslations("nav");
@@ -136,7 +145,7 @@ export function Sidebar({
               </button>
             </div>
             <NavLinks collapsed={false} isAdmin={user.isAdmin} onNavigate={closeMobile} />
-            <SidebarFooter collapsed={false} user={user} />
+            <SidebarFooter collapsed={false} user={user} build={build} />
           </div>
         </div>
       )}
@@ -172,7 +181,7 @@ export function Sidebar({
           </button>
         </div>
         <NavLinks collapsed={collapsed} isAdmin={user.isAdmin} />
-        <SidebarFooter collapsed={collapsed} user={user} />
+        <SidebarFooter collapsed={collapsed} user={user} build={build} />
       </aside>
     </>
   );
@@ -252,12 +261,21 @@ function NavLinks({
   );
 }
 
-function SidebarFooter({ collapsed, user }: { collapsed: boolean; user: SidebarUser }) {
+function SidebarFooter({
+  collapsed,
+  user,
+  build,
+}: {
+  collapsed: boolean;
+  user: SidebarUser;
+  build: SidebarBuild;
+}) {
   const tc = useTranslations("common");
   const tOrgs = useTranslations("orgs");
   const name = user.fullName?.trim() || user.email;
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   const who = `${name} · ${user.orgName}${user.isAdmin ? ` · ${tOrgs("adminRole")}` : ""}`;
+  const buildLabel = `v${build.version} · ${build.commit ?? "local"}`;
 
   if (collapsed) {
     return (
@@ -279,6 +297,10 @@ function SidebarFooter({ collapsed, user }: { collapsed: boolean; user: SidebarU
             <LogOut size={18} aria-hidden />
           </button>
         </form>
+        {/* Plegado no entra el commit: queda en el tooltip. */}
+        <span title={buildLabel} className="text-[10px] text-muted tabular-nums">
+          v{build.version}
+        </span>
       </div>
     );
   }
@@ -311,6 +333,7 @@ function SidebarFooter({ collapsed, user }: { collapsed: boolean; user: SidebarU
           {tc("logout")}
         </button>
       </form>
+      <p className="text-center text-[11px] text-muted tabular-nums">{buildLabel}</p>
     </div>
   );
 }
