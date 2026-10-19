@@ -10,6 +10,7 @@ import { buttonClass } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DocPreview } from "@/components/admin/DocPreview";
 import { AnswerField, AnswerValue } from "@/components/admin/answerParts";
+import { IpCountryField } from "@/components/admin/IpCountryField";
 import { ReportActions } from "@/components/admin/ReportActions";
 import { ReportCheckBlock } from "@/components/admin/ReportCheckBlock";
 import type { CheckImage } from "@/components/admin/checkParts";
@@ -24,6 +25,8 @@ import {
 import { createSignedDocUrls } from "@/lib/kyb/service";
 import { dropForeignFileRefs } from "@/lib/kyb/storagePaths";
 import { resolveRequestDefinition } from "@/lib/forms/store";
+import { countryName } from "@/lib/forms/countries";
+import { declaredCountries, ipCountryMismatch } from "@/lib/kyb/ipCountry";
 import { isAnswered, reachableSections, visibleFields } from "@/lib/forms/logic";
 import { resolveText, type Field } from "@/lib/forms/definition";
 import { fileRefsOf, isLongAnswer } from "@/lib/forms/answers";
@@ -179,6 +182,14 @@ export default async function RequestReport({
   // Respuestas a las preguntas marcadas en el formulario (0029_request_summary).
   const subjectTitle = typeof req.subject_title === "string" ? req.subject_title : null;
   const contactEmail = typeof req.contact_email === "string" ? req.contact_email : null;
+  // País de la IP del envío (0034), con el mismo aviso que el detalle.
+  const ipCountry = typeof req.submitted_ip_country === "string" ? req.submitted_ip_country : null;
+  const declared = definition ? declaredCountries(definition, formData) : [];
+  const ipWarning = ipCountryMismatch(ipCountry, declared)
+    ? t("ipCountryMismatch", {
+        declared: declared.map((c) => countryName(c, locale)).join(", "),
+      })
+    : null;
   // Título del documento: la pregunta marcada como título; si no hay, el nombre
   // que traen las verificaciones; y si tampoco, la referencia de la solicitud.
   const subject = subjectTitle || subjectName(checks) || externalRef;
@@ -244,6 +255,15 @@ export default async function RequestReport({
           ) : null}
           <Meta label={tR("createdAt")}>{fmtDate(req.created_at)}</Meta>
           <Meta label={tR("submittedAt")}>{fmtDate(req.submitted_at)}</Meta>
+          {req.submitted_at ? (
+            <IpCountryField
+              code={ipCountry}
+              locale={locale}
+              label={tR("ipCountry")}
+              unknown={t("ipCountryUnknown")}
+              warning={ipWarning}
+            />
+          ) : null}
           {req.decided_at ? (
             <Meta label={tR("decidedAt")}>{fmtDate(req.decided_at)}</Meta>
           ) : null}

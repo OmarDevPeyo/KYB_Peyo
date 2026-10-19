@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/Card";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { AnswerField, AnswerValue } from "@/components/admin/answerParts";
+import { IpCountryField } from "@/components/admin/IpCountryField";
 import { DocumentsPanel } from "@/components/admin/DocumentsPanel";
 import { formatBytes, type DocGroup, type DocRow } from "@/components/admin/docParts";
 import {
@@ -27,6 +28,8 @@ import { extractKybDeclared } from "@/lib/didit/verify";
 import { isTerminal, createSignedDocUrls } from "@/lib/kyb/service";
 import type { KybCorrections, KybStatus } from "@/lib/kyb/types";
 import { resolveRequestDefinition } from "@/lib/forms/store";
+import { countryName } from "@/lib/forms/countries";
+import { declaredCountries, ipCountryMismatch } from "@/lib/kyb/ipCountry";
 import { isAnswered } from "@/lib/forms/logic";
 import { resolveText, type Field } from "@/lib/forms/definition";
 import { fileRefsOf, isLongAnswer } from "@/lib/forms/answers";
@@ -147,6 +150,16 @@ export default async function RequestDetail({
     (request as { form_id?: string | null }).form_id,
     request.org_id as string,
   );
+
+  // País de la IP con que se envió (0034). Se avisa si no coincide con ninguno
+  // de los países que declaró; el legacy no tiene preguntas país y no avisa.
+  const ipCountry = (request.submitted_ip_country as string | null) ?? null;
+  const declared = definition ? declaredCountries(definition, formData) : [];
+  const ipWarning = ipCountryMismatch(ipCountry, declared)
+    ? t("ipCountryMismatch", {
+        declared: declared.map((c) => countryName(c, locale)).join(", "),
+      })
+    : null;
 
   // Validación registral (kyb_registry): ciclo manual del analista.
   const hasKybField = Boolean(
@@ -627,6 +640,26 @@ export default async function RequestDetail({
                   {typeof v === "object" ? JSON.stringify(v) : String(v)}
                 </AnswerField>
               ))}
+            </dl>
+          </Card>
+        )}
+
+        {/* Lo que no respondió el solicitante pero llegó con el envío. Antes de
+            enviar no hay nada que mostrar. */}
+        {request.submitted_at && (
+          <Card className="mt-4 p-4">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+              {t("submissionData")}
+            </h3>
+            <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+              <IpCountryField
+                code={ipCountry}
+                locale={locale}
+                label={t("ipCountry")}
+                unknown={t("ipCountryUnknown")}
+                warning={ipWarning}
+                hint={t("ipCountryHint")}
+              />
             </dl>
           </Card>
         )}

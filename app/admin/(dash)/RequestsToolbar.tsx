@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -9,11 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   ChevronDown,
   CircleDot,
   FileText,
+  Globe,
   LoaderCircle,
   Search,
   X,
@@ -21,6 +23,7 @@ import {
 import type { KybStatus } from "@/lib/kyb/types";
 import { FORM_NONE } from "./requestFilters";
 import { requestsHref } from "@/lib/admin/requestsQuery";
+import { countryOptions } from "@/lib/forms/countries";
 
 const STATUSES: KybStatus[] = [
   "created",
@@ -42,6 +45,8 @@ export type RequestsFilters = {
   q: string;
   status: string;
   form: string;
+  /** País de la IP del envío (alpha-2). */
+  country: string;
   from: string;
   to: string;
 };
@@ -72,6 +77,10 @@ export function RequestsToolbar({
 }) {
   const t = useTranslations("admin");
   const tStatus = useTranslations("status");
+  const locale = useLocale();
+  // Todos los países y no solo los que tienen solicitudes: saberlos exigiría
+  // recorrer la tabla. El selector nativo deja buscar tecleando.
+  const countries = useMemo(() => countryOptions(locale), [locale]);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -217,6 +226,21 @@ export function RequestsToolbar({
               ))}
             </optgroup>
           )}
+        </FilterSelect>
+
+        <FilterSelect
+          label={t("ipCountry")}
+          icon={<Globe size={16} aria-hidden />}
+          value={current.country}
+          onChange={(country) => navigate({ country })}
+          widthCls="sm:w-56"
+        >
+          <option value="">{t("allCountries")}</option>
+          {countries.map((c) => (
+            <option key={c.alpha2} value={c.alpha2}>
+              {c.flag} {c.name}
+            </option>
+          ))}
         </FilterSelect>
 
         <div

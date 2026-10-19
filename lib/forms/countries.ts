@@ -94,6 +94,15 @@ export function countryOptions(locale = "es"): CountryOption[] {
   return list.sort((a, b) => a.name.localeCompare(b.name, locale));
 }
 
+/** Nombre localizado de un país por su alpha-2; el código si no se conoce. */
+export function countryName(alpha2: string, locale = "es"): string {
+  try {
+    return displayNames(locale).of(alpha2.toUpperCase()) ?? alpha2;
+  } catch {
+    return alpha2;
+  }
+}
+
 /** alpha-3 → alpha-2 (para reconstruir nombre/bandera de un valor guardado). */
 export function alpha3ToAlpha2(alpha3: string): string | undefined {
   const up = alpha3.toUpperCase();

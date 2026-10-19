@@ -36,6 +36,15 @@ test("withOrg cambia de pestaña, conserva búsqueda/estado/fechas y suelta form
   assert.equal(withOrg(current, ""), "/admin?q=sa&status=submitted&from=2026-09-01&to=2026-09-30");
 });
 
+test("el país va en la URL y sobrevive al cambio de pestaña", () => {
+  assert.equal(
+    requestsHref({ status: "submitted", country: "BO", from: "2026-09-01" }),
+    "/admin?status=submitted&country=BO&from=2026-09-01",
+  );
+  assert.equal(withOrg({ country: "BO", form: "f", page: 2 }, ACME), `/admin?org=${ACME}&country=BO`);
+  assert.equal(clearedFilters({ org: ACME, country: "BO" }), `/admin?org=${ACME}`);
+});
+
 test("clearedFilters limpia los filtros pero no sale de la pestaña", () => {
   assert.equal(clearedFilters({ org: ACME, q: "x", status: "approved", page: 4 }), `/admin?org=${ACME}`);
   assert.equal(clearedFilters({ q: "x" }), "/admin");

@@ -9,6 +9,8 @@ import { ClickableRow } from "@/components/admin/ClickableRow";
 import { OriginBadge } from "@/components/admin/OriginBadge";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { resolveText, type LocalizedText } from "@/lib/forms/definition";
+import { countryName, flagEmoji } from "@/lib/forms/countries";
+import { normalizeIpCountry } from "@/lib/kyb/ipCountry";
 import type { KybStatus } from "@/lib/kyb/types";
 import { RequestsToolbar, type FormOption } from "./RequestsToolbar";
 import { FORM_NONE } from "./requestFilters";
@@ -56,6 +58,8 @@ type RequestRow = {
   /** Respuestas a las preguntas marcadas como título y email (0029). */
   subject_title: string | null;
   contact_email: string | null;
+  /** País de la IP con que se envió (0034). */
+  submitted_ip_country: string | null;
   /** `form_definition->title` del snapshot: sobrevive al borrado del formulario. */
   snapshot_title: LocalizedText | null;
   form: { name: string } | null;
@@ -70,6 +74,8 @@ type RequestItem = {
   /** Nombre de la solicitud (pregunta marcada como título); sin él se muestra la ref. */
   title: string | null;
   email: string | null;
+  /** País de la IP del envío: el código se pinta, el nombre va en el tooltip. */
+  country: { code: string; name: string } | null;
   api: boolean;
   client: string | null;
   /** Nombre de la org dueña: solo en la pestaña "Todas" del admin. */
@@ -80,14 +86,22 @@ type RequestItem = {
 };
 
 /**
- * Segunda línea de la celda: con nombre, la referencia pasa acá (en mono); el
- * email va siempre que exista. Sin ninguno de los dos no se pinta nada.
+ * Segunda línea de la celda: el país de la IP del envío, si lo hay; con nombre,
+ * la referencia pasa acá (en mono); el email va siempre que exista. El país va
+ * primero porque es corto y la línea se trunca por el final. Sin nada de eso no
+ * se pinta nada.
  */
 function RefLine({ it }: { it: RequestItem }) {
-  if (!it.title && !it.email) return null;
-  const text = [it.title ? it.ref : null, it.email].filter(Boolean).join(" · ");
+  const parts = [it.country?.name, it.title ? it.ref : null, it.email].filter(Boolean);
+  if (parts.length === 0) return null;
   return (
-    <span className="mt-0.5 block truncate text-xs text-muted" title={text}>
+    <span className="mt-0.5 block truncate text-xs text-muted" title={parts.join(" · ")}>
+      {it.country && (
+        <span>
+          {flagEmoji(it.country.code)} {it.country.code}
+        </span>
+      )}
+      {it.country && (it.title || it.email) && " · "}
       {it.title && <span className="font-mono">{it.ref}</span>}
       {it.title && it.email && " · "}
       {it.email}
@@ -129,6 +143,7 @@ export default async function AdminHome({
     q?: string;
     status?: string;
     form?: string;
+    country?: string;
     from?: string;
     to?: string;
     page?: string;
@@ -149,13 +164,14 @@ export default async function AdminHome({
   const q = (sp.q ?? "").trim();
   const status = isStatus(sp.status) ? sp.status : "";
   const form = parseFormFilter(sp.form);
+  const country = normalizeIpCountry(sp.country) ?? "";
   const from = sp.from ?? "";
   const to = sp.to ?? "";
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  const filters = { org: showOrgs ? (scope ?? "") : "", q, status, form, from, to };
-  const hasFilters = Boolean(q || status || form || from || to);
+  const filters = { org: showOrgs ? (scope ?? "") : "", q, status, form, country, from, to };
+  const hasFilters = Boolean(q || status || form || country || from || to);
 
   const supabase = await createServerSupabase();
   // El formulario sale del join por `form_id` (nombre vigente). Si se eliminó,
@@ -165,7 +181,7 @@ export default async function AdminHome({
   let query = supabase
     .from("kyb_requests")
     .select(
-      "id, external_ref, status, created_at, api_key_id, form_id, form_revision, org_id, subject_title, contact_email, snapshot_title:form_definition->title, form:forms(name)",
+      "id, external_ref, status, created_at, api_key_id, form_id, form_revision, org_id, subject_title, contact_email, submitted_ip_country, snapshot_title:form_definition->title, form:forms(name)",
       { count: "exact" },
     );
 
@@ -186,6 +202,7 @@ export default async function AdminHome({
   if (status) query = query.eq("status", status);
   if (form === FORM_NONE) query = query.is("form_id", null);
   else if (form) query = query.eq("form_id", form);
+  if (country) query = query.eq("submitted_ip_country", country);
   if (from) query = query.gte("created_at", from);
   if (to) {
     // `to` es una fecha (YYYY-MM-DD); incluir el día completo → límite exclusivo al día siguiente.
@@ -256,6 +273,9 @@ export default async function AdminHome({
       ref: displayRef(r.external_ref, api),
       title: r.subject_title || null,
       email: r.contact_email || null,
+      country: r.submitted_ip_country
+        ? { code: r.submitted_ip_country, name: countryName(r.submitted_ip_country, locale) }
+        : null,
       api,
       client: r.api_key_id ? (labels.get(r.api_key_id) ?? null) : null,
       // En una pestaña concreta la org es obvia; en "Todas" hace falta.

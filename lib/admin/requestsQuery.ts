@@ -13,6 +13,8 @@ export interface RequestsQuery {
   q: string;
   status: string;
   form: string;
+  /** País de la IP del envío (alpha-2, `submitted_ip_country`). */
+  country: string;
   from: string;
   to: string;
   page: number;
@@ -23,13 +25,14 @@ export const EMPTY_REQUESTS_QUERY: RequestsQuery = {
   q: "",
   status: "",
   form: "",
+  country: "",
   from: "",
   to: "",
   page: 1,
 };
 
 /** Orden fijo de los parámetros: URLs estables, fáciles de comparar. */
-const KEYS = ["org", "q", "status", "form", "from", "to"] as const;
+const KEYS = ["org", "q", "status", "form", "country", "from", "to"] as const;
 
 export function requestsHref(query: Partial<RequestsQuery>): string {
   const params = new URLSearchParams();
@@ -43,7 +46,7 @@ export function requestsHref(query: Partial<RequestsQuery>): string {
 }
 
 /**
- * Cambio de pestaña de org. Se conservan búsqueda, estado y fechas, pero NO el
+ * Cambio de pestaña de org. Se conservan búsqueda, estado, país y fechas, pero NO el
  * formulario (es de una org concreta: filtrar por el de otra da vacío) ni la
  * página (la nueva lista tiene otro largo).
  */
