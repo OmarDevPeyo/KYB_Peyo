@@ -356,10 +356,15 @@ export async function saveRenewalDraft(
   return Boolean(data);
 }
 
-/** `requested → submitted` con compare-and-set: un doble envío gana una sola vez. */
+/**
+ * `requested → submitted` con compare-and-set: un doble envío gana una sola vez.
+ * `ctx.ipCountry` (país de la IP del envío) va solo a la auditoría: la columna de
+ * la solicitud es la del envío del formulario.
+ */
 export async function submitRenewal(
   renewal: RenewalRow,
   answers: Record<string, unknown>,
+  ctx: { ipCountry: string | null },
 ): Promise<boolean> {
   const { data } = await createServiceClient()
     .from("document_renewals")
@@ -378,7 +383,7 @@ export async function submitRenewal(
     requestId: renewal.request_id,
     actor: "applicant",
     action: "renewal_submitted",
-    metadata: { round: renewal.round, keys: renewal.keys },
+    metadata: { round: renewal.round, keys: renewal.keys, ipCountry: ctx.ipCountry },
   });
   return true;
 }

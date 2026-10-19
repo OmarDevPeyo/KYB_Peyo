@@ -19,6 +19,7 @@ import { documentPath, dropForeignFileRefs, isOwnedPath } from "@/lib/kyb/storag
 import { buildZod } from "@/lib/forms/validation";
 import { fileRefsOf } from "@/lib/forms/answers";
 import { parseExpiryDate, todayUtc } from "@/lib/forms/expiry";
+import { clientCountry } from "@/lib/request/clientCountry";
 import type { Field } from "@/lib/forms/definition";
 
 // ============================================================
@@ -208,7 +209,7 @@ export async function submitRenewalAction(
     };
   }
 
-  if (!(await submitRenewal(g.renewal, parse.data))) {
+  if (!(await submitRenewal(g.renewal, parse.data, { ipCountry: await clientCountry() }))) {
     return { ok: false, error: "La renovación ya fue enviada." };
   }
   // Los documentos con fecha de DIDIT se vuelven a verificar en segundo plano.

@@ -16,6 +16,7 @@ import {
 } from "@/lib/kyb/service";
 import { acceptsApplicantWrites, canApplicantDeleteDocument } from "@/lib/kyb/applicantWrites";
 import { notifyClient } from "@/lib/kyb/webhook";
+import { clientCountry } from "@/lib/request/clientCountry";
 import { syncRequestExpirations } from "@/lib/kyb/expirations";
 import { createServiceClient } from "@/lib/supabase/service";
 import { documentPath, isOwnedPath } from "@/lib/kyb/storagePaths";
@@ -289,7 +290,7 @@ export async function submitAction(
   }
 
   try {
-    await submitRequest(r.req.id, parsed.data);
+    await submitRequest(r.req.id, parsed.data, { ipCountry: await clientCountry() });
     // Aviso inmediato al cliente de que el formulario se envió (para su correo
     // "recibimos tu solicitud"), antes de que terminen las verificaciones.
     after(() => notifyClient(r.req.id, "request.submitted"));
@@ -344,7 +345,7 @@ export async function submitFormAction(
     // `parse.data` y no `answers`: Zod descarta las claves que el formulario no
     // declara, así que se persiste exactamente lo que se validó. Antes se
     // guardaba el objeto crudo del cliente.
-    await submitRequest(r.req.id, parse.data);
+    await submitRequest(r.req.id, parse.data, { ipCountry: await clientCountry() });
     // Aviso inmediato de envío (ver submitAction). También dispara en el reenvío
     // tras corrección: la app deduplica por su propio estado si lo necesita.
     after(() => notifyClient(r.req.id, "request.submitted"));

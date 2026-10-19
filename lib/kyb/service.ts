@@ -786,10 +786,15 @@ export async function snapshotResponses(input: {
  * Finaliza el formulario (parte rápida): guarda datos y pasa a `submitted`.
  * Las verificaciones (DIDIT/AML) se disparan aparte con {@link runVerifications}
  * en segundo plano para no bloquear la respuesta al usuario.
+ *
+ * `ctx.ipCountry` es el país de la IP del envío (lib/request/clientCountry.ts):
+ * lo lee el Server Action, porque acá no hay request. Un reenvío lo pisa; el de
+ * cada envío queda en la auditoría.
  */
 export async function submitRequest(
   requestId: string,
   data: Record<string, unknown>,
+  ctx: { ipCountry: string | null },
 ): Promise<void> {
   const supabase = createServiceClient();
   const { data: req } = await supabase
@@ -858,6 +863,7 @@ export async function submitRequest(
     .update({
       status: "submitted",
       submitted_at: new Date().toISOString(),
+      submitted_ip_country: ctx.ipCountry,
       corrections: null,
       ...(summary ? summaryColumns(summary) : {}),
     })
@@ -872,6 +878,7 @@ export async function submitRequest(
     action: "form_submitted",
     fromStatus: req.status,
     toStatus: "submitted",
+    metadata: { ipCountry: ctx.ipCountry },
   });
 }
 

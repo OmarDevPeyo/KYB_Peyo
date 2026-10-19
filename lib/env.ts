@@ -53,6 +53,13 @@ export const env = {
   // Solo desarrollo: ruta al Chrome/Edge del sistema. En serverless se usa el
   // binario de `@sparticuz/chromium` y esta variable se deja vacía.
   chromePath: () => process.env.CHROME_EXECUTABLE_PATH ?? "",
+  // --- País de la IP del solicitante ---
+  // Vercel pone `VERCEL=1` en sus funciones. Solo ahí el header
+  // `x-vercel-ip-country` es de fiar: Vercel lo escribe y el cliente no lo elige.
+  onVercel: () => process.env.VERCEL === "1",
+  // Solo desarrollo: país (alpha-2) que se registra al enviar fuera de Vercel,
+  // para ver el dato y la alerta en local. En producción no se lee.
+  devIpCountry: () => process.env.KYB_DEV_IP_COUNTRY ?? "",
   // Límite de tasa por defecto (req/min por API key) si la key no fija uno propio.
   apiRateLimitDefault: () => {
     const n = Number(process.env.API_RATE_LIMIT_DEFAULT_PER_MIN);
