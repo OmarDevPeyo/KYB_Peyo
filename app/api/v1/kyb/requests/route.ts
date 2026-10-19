@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("kyb_requests")
     .select(
-      "id, external_ref, status, decision, subject_title, contact_email, created_at, submitted_at, decided_at",
+      "id, external_ref, status, decision, subject_title, contact_email, submitted_ip_country, created_at, submitted_at, decided_at",
       { count: "exact" },
     )
     .eq("api_key_id", g.keyId)
@@ -62,6 +62,8 @@ export async function GET(req: NextRequest) {
       contactEmail: r.contact_email ?? null,
       createdAt: r.created_at,
       submittedAt: r.submitted_at,
+      // País de la IP del último envío (ver GET /:id).
+      submissionContext: { ipCountry: r.submitted_ip_country ?? null },
       decidedAt: r.decided_at,
     })),
     limit,

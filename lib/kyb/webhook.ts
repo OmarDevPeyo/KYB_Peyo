@@ -78,7 +78,7 @@ export async function notifyClient(
     const { data: req } = await supabase
       .from("kyb_requests")
       .select(
-        "id, external_ref, status, decision, decision_reason, corrections, webhook_endpoint_id, form_revision, subject_title, contact_email, created_at, submitted_at, decided_at, token_expires_at",
+        "id, external_ref, status, decision, decision_reason, corrections, webhook_endpoint_id, form_revision, subject_title, contact_email, submitted_ip_country, created_at, submitted_at, decided_at, token_expires_at",
       )
       .eq("id", requestId)
       .maybeSingle();
@@ -114,6 +114,8 @@ export async function notifyClient(
       expires_at: req.token_expires_at ?? null,
       created_at: req.created_at,
       submitted_at: req.submitted_at,
+      // País de la IP del último envío (ver GET /:id).
+      submission_context: { ip_country: req.submitted_ip_country ?? null },
       decided_at: req.decided_at,
       ...(opts.data ?? {}),
       // Saneado igual que en la API pública: este payload viaja a una URL de

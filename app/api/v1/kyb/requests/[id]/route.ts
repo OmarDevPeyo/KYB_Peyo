@@ -25,7 +25,7 @@ export async function GET(
   const { data: request } = await supabase
     .from("kyb_requests")
     .select(
-      "id, external_ref, status, decision, decision_reason, corrections, form_id, form_revision, subject_title, contact_email, created_at, submitted_at, decided_at, token_expires_at",
+      "id, external_ref, status, decision, decision_reason, corrections, form_id, form_revision, subject_title, contact_email, submitted_ip_country, created_at, submitted_at, decided_at, token_expires_at",
     )
     .eq("id", id)
     .eq("api_key_id", g.keyId)
@@ -65,6 +65,10 @@ export async function GET(
     expiresAt: request.token_expires_at ?? null,
     createdAt: request.created_at,
     submittedAt: request.submitted_at,
+    // Datos del envío que no respondió el solicitante. `ipCountry`: país (ISO
+    // alpha-2) de la IP del último envío; `null` antes de enviar, en envíos
+    // anteriores a la migración 0034 o si no hubo dato.
+    submissionContext: { ipCountry: request.submitted_ip_country ?? null },
     decidedAt: request.decided_at,
     // `result` es el blob crudo del proveedor: sale saneado, nunca directo.
     aml: publicAmlChecks(amlChecks),
