@@ -304,7 +304,8 @@ export const formMetaSchema = z.object({ i18n: i18nMetaSchema.optional() });
 // de pregunta (el `key` es editable en el builder). Es configuración INTERNA:
 // el solicitante nunca la ve (ver `publicDefinition` en ./internalFields.ts).
 // Sin refinamientos acá a propósito: una definición vieja que no los cumpla
-// fallaría el parse y `resolveRequestDefinition` caería al formulario vivo.
+// fallaría el parse, y una solicitud con esa copia congelada dejaría de abrirse
+// (`resolveRequestDefinition` no la reemplaza: ver ./frozen.ts).
 // Los invariantes los impone `normalizeInternalFields`.
 // ------------------------------------------------------------
 export const INTERNAL_ROLES = ["title", "contactEmail"] as const;

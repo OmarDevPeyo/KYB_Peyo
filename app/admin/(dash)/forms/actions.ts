@@ -242,9 +242,8 @@ async function formBlockers(id: string) {
     // publicado —con otras keys— y el detalle deja de corresponder.
     //
     // Cubre el caso real (columna NULL: solicitudes previas a 0007 y las creadas
-    // por API sin formulario). Un snapshot presente pero inválido para el schema
-    // también caería al fallback, pero detectarlo exigiría parsear fila por fila
-    // y ese riesgo ya existe hoy, con o sin borrado.
+    // por API sin formulario). Un snapshot presente pero inválido no depende del
+    // `form_id`: `resolveRequestDefinition` falla en vez de caer al fallback.
     supabase
       .from("kyb_requests")
       .select("id", { count: "exact", head: true })

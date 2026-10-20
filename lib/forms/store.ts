@@ -1,6 +1,7 @@
 import "server-only";
 import { createServiceClient } from "@/lib/supabase/service";
 import { formDefinitionSchema, type FormDefinition, type FormStatus } from "./definition";
+import { parseFrozenDefinition } from "./frozen";
 
 export interface FormRow {
   id: string;
@@ -63,33 +64,36 @@ export async function getFormForRequest(
 }
 
 /**
- * Definición contra la que operar una solicitud: prioriza el snapshot congelado
- * en la solicitud (lo que el solicitante realmente llenó) y, si no existe o es
- * inválido (solicitudes viejas, incluidas las creadas por API antes de que la
- * congelaran), cae al form vigente por id,
- * y si tampoco hay id, al publicado por defecto de la org de la solicitud.
+ * Definición contra la que operar una solicitud: el snapshot congelado en la
+ * solicitud (lo que el solicitante realmente llenó). Solo si no hay snapshot
+ * (solicitudes viejas, incluidas las creadas por API antes de que la
+ * congelaran) cae al form vigente por id, y si tampoco hay id, al publicado por
+ * defecto de la org de la solicitud.
+ *
+ * Un snapshot que existe y no se puede leer LANZA (ver lib/forms/frozen.ts):
+ * reemplazarlo validaría y verificaría contra preguntas distintas.
  */
 export async function resolveRequestDefinition(
   snapshot: unknown,
   formId: string | null | undefined,
   orgId: string,
 ): Promise<FormDefinition | null> {
-  const parsed = formDefinitionSchema.safeParse(snapshot);
-  if (parsed.success) return parsed.data;
+  const frozen = parseFrozenDefinition(snapshot);
+  if (frozen) return frozen;
   const form = await getFormForRequest(formId, orgId);
   return form?.definition ?? null;
 }
 
 /**
  * Formulario vivo de la solicitud, del que se lee la configuración de hoy
- * (roles internos, control de vencimiento). Sin copia congelada válida, la
- * definición de la solicitud ya ES el formulario vivo.
+ * (roles internos, control de vencimiento). Sin copia congelada, la definición
+ * de la solicitud ya ES el formulario vivo.
  */
 export async function liveDefinitionFor(
   req: { form_id?: string | null; form_definition?: unknown },
   requestDef: FormDefinition,
 ): Promise<FormDefinition | null> {
-  if (!req.form_id || !formDefinitionSchema.safeParse(req.form_definition).success) {
+  if (!req.form_id || req.form_definition == null) {
     return requestDef;
   }
   return (await getFormById(req.form_id))?.definition ?? null;
