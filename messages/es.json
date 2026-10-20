@@ -390,6 +390,7 @@
     "title": "Formularios",
     "newForm": "Nuevo formulario",
     "importJson": "Importar JSON",
+    "installSystem": "Instalar «GlobalFlow · KYB empresas»",
     "import": "Importar",
     "cancel": "Cancelar",
     "chooseFile": "Elegir archivo .json",

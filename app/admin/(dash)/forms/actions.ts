@@ -18,6 +18,7 @@ import { expirySignature } from "@/lib/forms/expiry";
 import { revisionAfterSave } from "@/lib/forms/revision";
 import { refreshFormRequestsSummary } from "@/lib/kyb/service";
 import { refreshFormExpirations } from "@/lib/kyb/expirations";
+import { installSystemForm } from "@/lib/forms/system/sync";
 
 /**
  * Motivo por el que se rechazó archivar/eliminar. Se devuelve como CÓDIGO (no
@@ -390,6 +391,26 @@ function assignedToClient(clients: string[]): Result {
     params: { clients: list },
     error: `Este formulario está asignado a ${list}. Reasigná ese cliente primero.`,
   };
+}
+
+/**
+ * Instala un formulario del sistema (lib/forms/system/) en una organización, o
+ * lo deja al día si ya estaba. Solo el admin: es configuración de la
+ * integración, no del cliente.
+ */
+export async function installSystemFormAction(key: string, orgId: string | null): Promise<Result> {
+  const analyst = await requireAnalyst();
+  if (analyst.role !== "admin") return NOT_FOUND;
+  const org = await creationOrg(analyst, orgId);
+  if (!org) return { ok: false, error: "Organización inválida." };
+  try {
+    const { id } = await installSystemForm(key, org);
+    revalidatePath("/admin/forms");
+    revalidatePath(`/admin/forms/${id}/edit`);
+    return { ok: true, id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** `orgId`: solo lo usa el admin (selector de org); un miembro importa en la suya. */

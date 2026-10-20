@@ -2,11 +2,13 @@
 
 import { useState, type ChangeEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, buttonClass } from "@/components/ui/Button";
 import { OrgSelect } from "@/components/admin/OrgSelect";
 import type { OrgOption } from "@/lib/auth/tenant";
-import { createForm, importFormJson } from "./actions";
+import { createForm, importFormJson, installSystemFormAction } from "./actions";
+import { GLOBALFLOW_KYB_KEY } from "@/lib/forms/system/keys";
 
 export function FormsToolbar({
   showArchived = false,
@@ -29,6 +31,17 @@ export function FormsToolbar({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [org, setOrg] = useState(defaultOrg);
+  const router = useRouter();
+
+  // Solo el admin ve el selector de org, y solo él instala formularios del sistema.
+  async function onInstall() {
+    setBusy(true);
+    setError(null);
+    const res = await installSystemFormAction(GLOBALFLOW_KYB_KEY, org || null);
+    setBusy(false);
+    if (!res.ok) setError(res.error);
+    else if (res.id) router.push(`/admin/forms/${res.id}/edit`);
+  }
 
   async function onImport() {
     setBusy(true);
@@ -70,6 +83,11 @@ export function FormsToolbar({
       <Button variant="outline" onClick={() => setShowImport((s) => !s)}>
         {t("importJson")}
       </Button>
+      {orgs.length > 0 && (
+        <Button variant="outline" onClick={onInstall} disabled={busy || !org}>
+          {t("installSystem")}
+        </Button>
+      )}
       {/* Los archivados viven en su propia vista: se llega por query string para
           que el enlace sea compartible y el back del navegador funcione. */}
       <Link
@@ -79,6 +97,7 @@ export function FormsToolbar({
         {showArchived ? t("showActive") : t("showArchived")}
       </Link>
 
+      {error && !showImport && <p className="w-full text-sm text-danger">{error}</p>}
       {showImport && (
         <div className="mt-2 w-full">
           <p className="mb-1 text-sm text-muted">{t("importHint")}</p>
