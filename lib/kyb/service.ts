@@ -6,6 +6,7 @@ import { env } from "@/lib/env";
 import { getAmlProvider } from "@/lib/aml";
 import { buildAmlSubject } from "@/lib/aml/mapping";
 import { dispatchDiditReviews, type DiditCheckRow } from "@/lib/didit/verify";
+import { checksReading, planDiditTasks } from "@/lib/didit/plan";
 import { recordCheckCharge } from "@/lib/didit/costs";
 import { notifyClient } from "@/lib/kyb/webhook";
 import { liveDefinitionFor, resolveRequestDefinition } from "@/lib/forms/store";
@@ -1211,6 +1212,14 @@ export async function requestChanges(
     .eq("request_id", requestId)
     .maybeSingle();
   const answers = { ...((responseRow?.data as Record<string, unknown>) ?? {}) };
+  // Controles que leyeron alguna pregunta marcada, con las respuestas de antes
+  // de borrarlas: corregir el apellido o el reverso del CI deja viejo el AML o
+  // la verificación que viven en otra pregunta (la de los nombres, el anverso).
+  const markedKeys = marked.map((m) => m.key);
+  const staleKeys = new Set(markedKeys);
+  for (const id of checksReading(planDiditTasks(definition, answers), markedKeys)) {
+    staleKeys.add(id.slice(id.indexOf(":") + 1));
+  }
   const previous: Record<string, unknown> = {};
   for (const { key } of marked) {
     if (key in answers) previous[key] = answers[key];
@@ -1223,9 +1232,10 @@ export async function requestChanges(
       { onConflict: "request_id" },
     );
 
-  // Re-verificar solo lo corregido: los aml_checks de esas preguntas quedan
-  // reemplazados en esta ronda. Siguen como evidencia, pero dejan de ser los
-  // vigentes y el reenvío vuelve a correrlos (runVerifications los ignora).
+  // Re-verificar solo lo corregido: los aml_checks de esas preguntas, y los de
+  // las que las leían (`staleKeys`), quedan reemplazados en esta ronda. Siguen
+  // como evidencia, pero dejan de ser los vigentes y el reenvío vuelve a
+  // correrlos (runVerifications los ignora).
   // EXCEPTO kyb_registry: un ciclo facturado nunca se repite automáticamente —
   // la re-validación es un nuevo run manual del analista. (`or` en vez de `neq`
   // para no excluir filas con feature NULL.)
@@ -1233,7 +1243,7 @@ export async function requestChanges(
     .from("aml_checks")
     .update({ superseded_at: new Date().toISOString(), superseded_round: round })
     .eq("request_id", requestId)
-    .in("field_key", marked.map((m) => m.key))
+    .in("field_key", [...staleKeys])
     .is("superseded_at", null)
     .or("feature.is.null,feature.neq.kyb_registry");
 

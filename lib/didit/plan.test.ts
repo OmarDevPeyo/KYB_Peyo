@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Field, FieldReview, FormDefinition, LocalizedText } from "../forms/definition.ts";
-import { isBackSide, planDiditTasks, textAnswer, type DiditTask } from "./plan.ts";
+import { checksReading, isBackSide, planDiditTasks, textAnswer, type DiditTask } from "./plan.ts";
 
 // Recorte del "FORMULARIO DE REGISTRO PARA EMPRESAS" real (importado de Google
 // Forms): keys `q_…`, anverso/reverso distinguibles solo por la etiqueta y
@@ -260,4 +260,168 @@ test("textAnswer lee números (campo `number` coaccionado por Zod)", () => {
   assert.equal(textAnswer({ m: "  ABC-1 " }, "m"), "ABC-1");
   assert.equal(textAnswer({ m: Number.NaN }, "m"), "");
   assert.equal(textAnswer({}, "m"), "");
+});
+
+// ------------------------------------------------------------
+// AML con datos explícitos (`review.aml`) y correcciones
+// ------------------------------------------------------------
+const country = (key: string): Field => ({ id: key, key, type: "country", label: key, required: false });
+const date = (key: string): Field => ({ id: key, key, type: "date", label: key, required: false });
+
+const AML_FORM: FormDefinition = {
+  version: 1,
+  title: "KYB",
+  locales: ["es"],
+  defaultLocale: "es",
+  sections: [
+    {
+      id: "empresa",
+      title: "Empresa",
+      fields: [
+        text("company_legal_name", {
+          provider: "didit",
+          feature: "kyb_registry",
+          aml: { entityType: "company", dobKey: "company_incorporation_date" },
+        }),
+        date("company_incorporation_date"),
+        country("company_country"),
+      ],
+    },
+    {
+      id: "socio_1",
+      title: "Socio 1",
+      fields: [
+        text("p1_first_names", {
+          provider: "didit",
+          feature: "aml_screening",
+          aml: {
+            entityType: "person",
+            nameKeys: ["p1_first_names", "p1_last_names"],
+            dobKey: "p1_birth_date",
+            nationalityKey: "p1_nationality",
+            documentKey: "p1_doc_number",
+          },
+        }),
+        text("p1_last_names"),
+        date("p1_birth_date"),
+        country("p1_nationality"),
+        text("p1_doc_number"),
+        front("p1_id_front"),
+        back("p1_id_back"),
+      ],
+    },
+  ],
+};
+
+const AML_ANSWERS = {
+  company_legal_name: "Pythas Holdings S.R.L.",
+  company_incorporation_date: "2019-03-01",
+  company_country: "BOL",
+  p1_first_names: "Juan  Carlos",
+  p1_last_names: "Pérez Rojas",
+  p1_birth_date: "1980-05-02",
+  p1_nationality: "BOL",
+  p1_doc_number: "1234567",
+  p1_id_front: up("ci-front.jpg"),
+  p1_id_back: up("ci-back.jpg"),
+};
+
+const amlBodies = (tasks: DiditTask[]) =>
+  Object.fromEntries(
+    tasks.flatMap((t) => (t.feature === "aml_screening" ? [[t.fieldKey, t.body]] : [])),
+  );
+
+test("review.aml de persona: nombre con nombres y apellidos, nacionalidad en alpha-2", () => {
+  const { tasks } = planDiditTasks(AML_FORM, AML_ANSWERS);
+  assert.deepEqual(amlBodies(tasks).p1_first_names, {
+    full_name: "Juan Carlos Pérez Rojas",
+    entity_type: "person",
+    date_of_birth: "1980-05-02",
+    nationality: "BO",
+    document_number: "1234567",
+  });
+});
+
+test("razón social con kyb_registry + aml: corre el AML de la empresa, sin datos de persona", () => {
+  const { tasks } = planDiditTasks(AML_FORM, AML_ANSWERS);
+  assert.deepEqual(amlBodies(tasks).company_legal_name, {
+    full_name: "Pythas Holdings S.R.L.",
+    entity_type: "company",
+    date_of_birth: "2019-03-01",
+  });
+  // El registro mercantil sigue siendo manual: no sale como tarea.
+  assert.equal(tasks.some((t) => (t.feature as string) === "kyb_registry"), false);
+});
+
+test("review.aml sin nombre: no_input; razón social no recorrida: not_reached", () => {
+  const noName = planDiditTasks(AML_FORM, { ...AML_ANSWERS, p1_first_names: "", p1_last_names: "" });
+  assert.ok(
+    noName.skipped.some(
+      (s) => s.feature === "aml_screening" && s.fieldKey === "p1_first_names" && s.reason === "no_input",
+    ),
+  );
+
+  const hidden: FormDefinition = {
+    ...AML_FORM,
+    sections: [
+      { ...AML_FORM.sections[0], visibleIf: { field: "nunca", op: "eq", value: "x" } },
+      AML_FORM.sections[1],
+    ],
+  };
+  const { tasks, skipped } = planDiditTasks(hidden, AML_ANSWERS);
+  assert.equal(amlBodies(tasks).company_legal_name, undefined);
+  assert.ok(
+    skipped.some(
+      (s) => s.feature === "aml_screening" && s.fieldKey === "company_legal_name" && s.reason === "not_reached",
+    ),
+  );
+});
+
+test("inputs: cada tarea dice qué preguntas leyó", () => {
+  const { inputs } = planDiditTasks(AML_FORM, AML_ANSWERS);
+  assert.deepEqual(inputs["id_verification:p1_id_front"], ["p1_id_front", "p1_id_back"]);
+  assert.deepEqual(inputs["aml_screening:p1_first_names"].sort(), [
+    "p1_birth_date",
+    "p1_doc_number",
+    "p1_first_names",
+    "p1_last_names",
+    "p1_nationality",
+  ]);
+  assert.deepEqual(inputs["aml_screening:company_legal_name"].sort(), [
+    "company_incorporation_date",
+    "company_legal_name",
+  ]);
+});
+
+test("checksReading: corregir el apellido o el reverso deja viejos el AML y el CI", () => {
+  const plan = planDiditTasks(AML_FORM, AML_ANSWERS);
+  assert.deepEqual(checksReading(plan, ["p1_last_names"]), ["aml_screening:p1_first_names"]);
+  assert.deepEqual(checksReading(plan, ["p1_id_back"]), ["id_verification:p1_id_front"]);
+  assert.deepEqual(checksReading(plan, ["company_incorporation_date"]), [
+    "aml_screening:company_legal_name",
+  ]);
+  assert.deepEqual(checksReading(plan, ["company_country"]), []);
+});
+
+test("AML por convención de key: inputs con las hermanas que leyó", () => {
+  const def: FormDefinition = {
+    version: 1,
+    title: "t",
+    locales: ["es"],
+    defaultLocale: "es",
+    sections: [
+      {
+        id: "s",
+        title: "s",
+        fields: [
+          text("rep_full_name", { provider: "didit", feature: "aml_screening" }),
+          text("rep_date_of_birth"),
+          text("rep_nationality"),
+        ],
+      },
+    ],
+  };
+  const plan = planDiditTasks(def, { rep_full_name: "Ana", rep_date_of_birth: "1990-01-01" });
+  assert.deepEqual(amlBodies(plan.tasks).rep_full_name, { full_name: "Ana", date_of_birth: "1990-01-01" });
+  assert.deepEqual(plan.inputs["aml_screening:rep_full_name"], ["rep_full_name", "rep_date_of_birth"]);
 });

@@ -125,9 +125,31 @@ export function isDiditCompatible(feature: DiditFeature, type: FieldType): boole
   return DIDIT_FEATURE_COMPAT[feature].includes(type);
 }
 
+/**
+ * AML con datos EXPLÍCITOS, en vez de buscarlos por convención de key en la
+ * sección (ver `siblingText` en lib/didit/plan.ts). Va en una pregunta con
+ * `aml_screening`, o en la razón social con `kyb_registry`, donde corre además
+ * el AML de la empresa sobre esa misma respuesta.
+ *
+ * - `nameKeys`: el nombre completo se arma con estas respuestas, en orden
+ *   (nombres + apellidos). Sin ellas, es la respuesta de la propia pregunta.
+ * - `dobKey`: fecha de nacimiento; en una empresa, la de constitución.
+ * - `nationalityKey`: una pregunta `country` (se manda en alpha-2). Solo personas.
+ * - `documentKey`: número de documento. Solo personas.
+ */
+export const amlSubjectSchema = z.object({
+  entityType: z.enum(["person", "company"]),
+  nameKeys: z.array(z.string().min(1)).max(4).optional(),
+  dobKey: z.string().min(1).optional(),
+  nationalityKey: z.string().min(1).optional(),
+  documentKey: z.string().min(1).optional(),
+});
+export type AmlSubject = z.infer<typeof amlSubjectSchema>;
+
 export const reviewSchema = z.object({
   provider: z.literal("didit"),
   feature: diditFeatureSchema,
+  aml: amlSubjectSchema.optional(),
   // Solo para face_match: keys del documento de referencia (frente + reverso opcional).
   refKeys: z.array(z.string()).max(2).optional(),
   // Solo para kyb_registry: binding explícito de las preguntas de soporte.

@@ -9,7 +9,7 @@ import {
   KYB_REG_NUMBER_EXCLUDE_RE,
   KYB_COUNTRY_RES,
 } from "@/lib/forms/definition";
-import { alpha3ToAlpha2 } from "@/lib/forms/countries";
+import { toAlpha2 } from "@/lib/forms/countries";
 import { diditApiKey, diditBase } from "./http";
 import { recordKybCharge } from "./costs";
 import { planDiditTasks, textAnswer, type DiditTask, type SkipReason } from "./plan";
@@ -141,14 +141,6 @@ function formText(
     const v = scan(sections[i].fields);
     if (v) return v;
   }
-  return undefined;
-}
-
-/** Acepta alpha-3 (los campos tipo `country` guardan alpha-3) o alpha-2 directo. */
-function toAlpha2(v: string): string | undefined {
-  const s = v.trim().toUpperCase();
-  if (/^[A-Z]{2}$/.test(s)) return s;
-  if (/^[A-Z]{3}$/.test(s)) return alpha3ToAlpha2(s);
   return undefined;
 }
 

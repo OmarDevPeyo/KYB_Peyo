@@ -109,3 +109,11 @@ export function alpha3ToAlpha2(alpha3: string): string | undefined {
   for (const [a2, a3] of Object.entries(COUNTRY_A2_TO_A3)) if (a3 === up) return a2;
   return undefined;
 }
+
+/** Acepta alpha-3 (los campos tipo `country` guardan alpha-3) o alpha-2 directo. */
+export function toAlpha2(v: string): string | undefined {
+  const s = v.trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(s)) return s;
+  if (/^[A-Z]{3}$/.test(s)) return alpha3ToAlpha2(s);
+  return undefined;
+}
