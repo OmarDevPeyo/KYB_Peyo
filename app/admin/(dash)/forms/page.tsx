@@ -28,6 +28,7 @@ type Row = {
   definition: FormDefinition;
   updated_at: string;
   org_id: string;
+  system_key: string | null;
 };
 
 const BADGE: Record<FormStatus, string> = {
@@ -58,7 +59,7 @@ export default async function FormsList({
   const supabase = await createServerSupabase();
   let query = supabase
     .from("forms")
-    .select("id, name, status, source, definition, updated_at, org_id")
+    .select("id, name, status, source, definition, updated_at, org_id, system_key")
     .order("updated_at", { ascending: false });
   if (scope) query = query.eq("org_id", scope);
 
@@ -113,6 +114,14 @@ export default async function FormsList({
                     >
                       {f.name}
                     </Link>
+                    {f.system_key && (
+                      <span
+                        title={f.system_key}
+                        className="ml-2 rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium text-muted"
+                      >
+                        {t("systemBadge")}
+                      </span>
+                    )}
                     {/* En "Todas" hace falta saber de qué cliente es. */}
                     {isAdmin && !scope && (
                       <span className="ml-2 rounded-md bg-brand/10 px-1.5 py-0.5 text-[11px] font-medium text-brand">
@@ -137,14 +146,19 @@ export default async function FormsList({
                   <td className="px-4 py-2.5">
                     <div className="flex flex-wrap justify-end gap-1.5">
                       <DuplicateFormButton id={f.id} name={f.name} />
-                      <ArchiveFormButton
-                        id={f.id}
-                        name={f.name}
-                        archived={f.status === "archived"}
-                      />
-                      {/* Eliminar es irreversible, pero es de la org dueña:
-                          el action verifica la org y los bloqueos. */}
-                      <DeleteFormButton id={f.id} name={f.name} />
+                      {/* Uno del sistema se cambia con un deploy: solo se duplica. */}
+                      {!f.system_key && (
+                        <>
+                          <ArchiveFormButton
+                            id={f.id}
+                            name={f.name}
+                            archived={f.status === "archived"}
+                          />
+                          {/* Eliminar es irreversible, pero es de la org dueña:
+                              el action verifica la org y los bloqueos. */}
+                          <DeleteFormButton id={f.id} name={f.name} />
+                        </>
+                      )}
                     </div>
                   </td>
                 </ClickableRow>

@@ -425,6 +425,11 @@
     "confirmDeleteBodyWithRequests": "“{name}” will be deleted along with all its questions and translations, and {count, plural, one {# request will be unlinked} other {# requests will be unlinked}} (they keep their own copy of the form). This action cannot be undone.",
     "actionBlockedTitle": "Not possible yet",
     "errorAssignedToClient": "This form is assigned to {clients}. Reassign that client before archiving or deleting it.",
+    "errorSystemForm": "This is a system form: it changes with a deploy. Duplicate it to edit a copy.",
+    "systemBadge": "System",
+    "systemTitle": "System form",
+    "systemNotice": "“{key}”, version {version}. It is defined in code and changes with a deploy: it can't be edited, unpublished or archived from the panel. To change it by hand, duplicate it and edit the copy.",
+    "systemPreview": "Preview",
     "errorRequestsNoSnapshot": "{count, plural, one {# request depends} other {# requests depend}} on this form and keep no copy of its definition: deleting it would stop them from showing what the applicant filled in. Archive it instead."
   },
   "builder": {

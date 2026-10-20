@@ -10,6 +10,7 @@ import {
   emptyForm,
   formDefinitionSchema,
   resolveText,
+  withoutSystemMeta,
 } from "@/lib/forms/definition";
 import { isGoogleFormExport, fromGoogleForm } from "@/lib/forms/import-google";
 import { normalizeFormDefinition } from "@/lib/forms/normalize";
@@ -24,7 +25,10 @@ import { refreshFormExpirations } from "@/lib/kyb/expirations";
  * `params`. El `error` que viaja al lado es el fallback en español, para los
  * call-sites que solo pintan el string.
  */
-export type FormActionErrorCode = "assigned_to_client" | "requests_no_snapshot";
+export type FormActionErrorCode =
+  | "assigned_to_client"
+  | "requests_no_snapshot"
+  | "system_form";
 
 type Result =
   /** `revision`: la nueva, si guardar un formulario publicado abrió una. */
@@ -45,6 +49,17 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
  * si no, responden como si el formulario no existiera.
  */
 const NOT_FOUND: Result = { ok: false, error: "Formulario no encontrado." };
+
+/**
+ * Un formulario del sistema (0035) se define en el código y lo instala la
+ * sincronización: quien consume sus respuestas depende de sus claves. Desde el
+ * panel no se edita, no se despublica, no se archiva ni se borra; se duplica.
+ */
+const SYSTEM_FORM: Result = {
+  ok: false,
+  code: "system_form",
+  error: "Es un formulario del sistema: se cambia con un deploy. Duplicalo para editar una copia.",
+};
 
 /**
  * `<form action={createForm}>`: el campo `org` solo lo manda el selector del
@@ -76,8 +91,9 @@ export async function saveForm(
   payload: { name: string; definition: unknown },
 ): Promise<Result> {
   const analyst = await requireAnalyst();
-  const current = await loadOwnedForm(analyst, id, "id, definition, status, version");
+  const current = await loadOwnedForm(analyst, id, "id, definition, status, version, system_key");
   if (!current) return NOT_FOUND;
+  if (current.system_key) return SYSTEM_FORM;
   const parsed = formDefinitionSchema.safeParse(payload.definition);
   if (!parsed.success) {
     return { ok: false, error: "La definición del formulario no es válida." };
@@ -149,7 +165,9 @@ export async function setFormStatus(
   status: "draft" | "published",
 ): Promise<Result> {
   const analyst = await requireAnalyst();
-  if (!(await loadOwnedForm(analyst, id))) return NOT_FOUND;
+  const owned = await loadOwnedForm(analyst, id, "id, system_key");
+  if (!owned) return NOT_FOUND;
+  if (owned.system_key) return SYSTEM_FORM;
   const supabase = createServiceClient();
 
   // Despublicar el formulario por defecto de una key la deja sin formulario:
@@ -208,7 +226,10 @@ export async function duplicateForm(id: string) {
       status: "draft",
       source: data.source,
       source_ref: data.source_ref,
-      definition: normalizeFormDefinition(parsed.data),
+      // La copia es un formulario del panel: sin `system_key` (no se copia) ni
+      // la marca `meta.system`, que haría pasar sus solicitudes por las del
+      // formulario del sistema.
+      definition: normalizeFormDefinition(withoutSystemMeta(parsed.data)),
     })
     .select("id")
     .single();
@@ -297,7 +318,9 @@ export async function formUsage(id: string): Promise<FormUsage> {
  */
 export async function archiveForm(id: string, archived: boolean): Promise<Result> {
   const analyst = await requireAnalyst();
-  if (!(await loadOwnedForm(analyst, id))) return NOT_FOUND;
+  const owned = await loadOwnedForm(analyst, id, "id, system_key");
+  if (!owned) return NOT_FOUND;
+  if (owned.system_key) return SYSTEM_FORM;
 
   if (archived) {
     const { clients } = await formBlockers(id);
@@ -333,7 +356,9 @@ export async function archiveForm(id: string, archived: boolean): Promise<Result
  */
 export async function deleteForm(id: string): Promise<Result> {
   const analyst = await requireAnalyst();
-  if (!(await loadOwnedForm(analyst, id))) return NOT_FOUND;
+  const owned = await loadOwnedForm(analyst, id, "id, system_key");
+  if (!owned) return NOT_FOUND;
+  if (owned.system_key) return SYSTEM_FORM;
 
   const { clients, requestsWithoutSnapshot } = await formBlockers(id);
   if (clients.length > 0) return assignedToClient(clients);
@@ -401,7 +426,8 @@ export async function importFormJson(json: string, orgId?: string | null): Promi
       name: resolveText(parsed.data.title, "es") || "Formulario importado",
       status: "draft",
       source: "manual",
-      definition: normalizeFormDefinition(parsed.data),
+      // Un JSON exportado de un formulario del sistema entra como uno común.
+      definition: normalizeFormDefinition(withoutSystemMeta(parsed.data)),
     })
     .select("id")
     .single();

@@ -22,6 +22,8 @@ export function formActionError(t: Translator, res: ActionError): string {
       return t("errorAssignedToClient", { clients: String(res.params?.clients ?? "") });
     case "requests_no_snapshot":
       return t("errorRequestsNoSnapshot", { count: Number(res.params?.count ?? 0) });
+    case "system_form":
+      return t("errorSystemForm");
     default:
       return res.error;
   }

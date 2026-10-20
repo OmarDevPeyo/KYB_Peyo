@@ -425,6 +425,11 @@
     "confirmDeleteBodyWithRequests": "Se elimina «{name}» con todas sus preguntas y traducciones, y {count, plural, one {# solicitud queda desvinculada} other {# solicitudes quedan desvinculadas}} (conservan su copia del formulario). Esta acción no se puede deshacer.",
     "actionBlockedTitle": "No se puede hacer todavía",
     "errorAssignedToClient": "Este formulario está asignado a {clients}. Reasigná ese cliente antes de archivarlo o eliminarlo.",
+    "errorSystemForm": "Es un formulario del sistema: se cambia con un deploy. Duplicalo para editar una copia.",
+    "systemBadge": "Sistema",
+    "systemTitle": "Formulario del sistema",
+    "systemNotice": "«{key}», versión {version}. Se define en el código y se cambia con un deploy: desde el panel no se edita, no se despublica ni se archiva. Para cambiarlo a mano, duplicalo y editá la copia.",
+    "systemPreview": "Vista previa",
     "errorRequestsNoSnapshot": "{count, plural, one {# solicitud depende} other {# solicitudes dependen}} de este formulario y no guardan copia de su definición: si se elimina, dejan de mostrar lo que el solicitante llenó. Archivalo en vez de eliminarlo."
   },
   "builder": {

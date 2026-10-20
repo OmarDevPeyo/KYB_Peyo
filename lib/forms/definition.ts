@@ -324,7 +324,30 @@ export const i18nMetaSchema = z.record(
 );
 export type I18nMeta = z.infer<typeof i18nMetaSchema>;
 
-export const formMetaSchema = z.object({ i18n: i18nMetaSchema.optional() });
+/**
+ * Identidad de un formulario del sistema (lib/forms/system/): su clave y la
+ * versión de la definición en el código. Va dentro de la definición para que
+ * quede congelada en cada solicitud y salga por la API (`form`), así quien la
+ * consume sabe con qué contrato leer las respuestas.
+ */
+export const systemFormMetaSchema = z.object({
+  key: z.string().min(1),
+  version: z.number().int().positive(),
+});
+export type SystemFormMeta = z.infer<typeof systemFormMetaSchema>;
+
+export const formMetaSchema = z.object({
+  i18n: i18nMetaSchema.optional(),
+  system: systemFormMetaSchema.optional(),
+});
+
+/** La misma definición sin la marca de formulario del sistema (para una copia). */
+export function withoutSystemMeta(def: FormDefinition): FormDefinition {
+  if (!def.meta?.system) return def;
+  const meta = { ...def.meta };
+  delete meta.system;
+  return { ...def, meta };
+}
 
 // ------------------------------------------------------------
 // Preguntas de uso interno: la respuesta de una da el título de la solicitud
