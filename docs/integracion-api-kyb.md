@@ -154,13 +154,15 @@ Query params: `status`, `external_ref`, `limit` (def 20, máx 100), `offset` (de
   "status": "under_review", "decision": null,
   "reason": null, "corrections": null,
   "formId": "…", "formRevision": 7,
+  "form": { "key": "globalflow-kyb-empresas", "version": 1 },
   "subjectTitle": "Pythas Holdings", "contactEmail": "ops@pythas.com",
   "expiresAt": "2026-08-01T12:00:00.000Z",
   "createdAt": "…", "submittedAt": "…",
   "submissionContext": { "ipCountry": "BO" },
   "decidedAt": null,
   "aml": [
-    { "provider": "didit", "status": "passed",
+    { "provider": "didit", "feature": "aml_screening", "field_key": "partner_1_first_names",
+      "status": "passed",
       "result": { /* respuesta de DIDIT, sin campos internos nuestros */ },
       "created_at": "…", "updated_at": "…" }
   ],
@@ -178,6 +180,12 @@ Query params: `status`, `external_ref`, `limit` (def 20, máx 100), `offset` (de
 - `formId` / `formRevision`: el formulario y la **revisión** con los que se creó la
   solicitud. Úsalos para elegir el mapeo de campos correcto (§4.9). `formRevision` es
   `null` en solicitudes anteriores a que existiera el campo.
+- `form`: si la solicitud se creó con un **formulario del sistema** (uno que definimos
+  en el código y que no se edita desde el panel), su clave y versión:
+  `{ key, version }`. Sale de la definición que la solicitud congeló al crearse, así
+  que una solicitud en curso conserva la versión con la que empezó aunque el
+  formulario ya vaya por otra. Úsalo para elegir el contrato con el que lees las
+  respuestas. Es `null` si el formulario no es del sistema.
 - `subjectTitle` / `contactEmail`: respuestas a las preguntas que el formulario
   marca como **título** de la solicitud (p. ej. la razón social) y como **email de
   contacto**. Son `null` si el formulario no marca esa pregunta, si la persona no
@@ -191,7 +199,13 @@ Query params: `status`, `external_ref`, `limit` (def 20, máx 100), `offset` (de
   así que úsalo como señal, no como prueba de ubicación. Es `null` si la solicitud
   aún no se envió, si se envió antes de que existiera el campo o si no hubo dato.
 - `expiresAt`: vencimiento del link de invitación vigente (ISO), o `null`.
-- `aml[]`: un elemento por verificación. Además de los checks por persona, puede
+- `aml[]`: un elemento por verificación. `feature` dice qué control es
+  (`aml_screening`, `id_verification`, `face_match`, `proof_of_address`,
+  `kyb_registry`…) y `field_key`, de qué pregunta del formulario: con eso cruzas
+  cada control con su sujeto (la empresa, cada socio, el representante). En un
+  formulario del sistema el AML de la empresa va en la razón social, y el de cada
+  persona en la pregunta de sus nombres. Las filas viejas pueden traer
+  `field_key: null`. Además de los checks por persona, puede
   incluir la **validación registral de empresa** (`feature: "kyb_registry"`).
   Este check NO corre al enviar el formulario: lo dispara un analista desde el
   panel (la búsqueda registral tarda ~90s y la consulta del perfil es
@@ -236,6 +250,8 @@ ni lo cuentes contra la completitud del expediente.
 ```json
 {
   "id": "…", "externalRef": "emp-123", "status": "under_review",
+  "formId": "…", "formRevision": 7,
+  "form": { "key": "globalflow-kyb-empresas", "version": 1 },
   "answers": [
     { "key": "legal_name", "label": "Razón social", "type": "short_text",
       "value": "ACME S.A.", "raw": "ACME S.A." },
@@ -425,7 +441,8 @@ claves que tu código consume y falle **antes** de desplegar.
 
 ```json
 {
-  "id": "…", "revision": 7, "locales": ["es","en"], "defaultLocale": "es",
+  "id": "…", "revision": 7, "form": { "key": "globalflow-kyb-empresas", "version": 1 },
+  "locales": ["es","en"], "defaultLocale": "es",
   "fields": [
     { "key": "legal_name", "type": "short_text", "required": true, "section": "empresa",
       "label": { "es": "Razón social", "en": "Legal name" } },
@@ -440,6 +457,11 @@ claves que tu código consume y falle **antes** de desplegar.
   cliente o no existe).
 - Las etiquetas viajan como objeto por locale, sin resolver, para que compares sin
   ambigüedad de idioma.
+- `form`: clave y versión si es un formulario del sistema (ver §4.3); si no, `null`.
+  Un chequeo de contrato puede exigir una clave y una versión conocidas antes de
+  aceptar el formulario.
+- El tipo `naics` guarda un código NAICS 2022 de 6 dígitos (`"541511"`); su `value`
+  en `/answers` es «541511 · descripción».
 - Las **`options[].value`** son los valores que vas a recibir en las respuestas y son
   independientes del idioma. Si mapeas enums hacia un tercero (p. ej. Bridge), compáralos
   contra esta lista: es la fuente de verdad de lo que el formulario puede producir.
@@ -506,7 +528,8 @@ Body (JSON): el mismo shape que `GET /:id` + `event`, `event_id`, `sent_at`. Inc
 `expires_at` (vencimiento del link vigente; en snake_case dentro del webhook) y
 `form_revision` (§4.9), además de `reason` y `corrections` según el evento.
 También trae `subject_title` y `contact_email` (los `subjectTitle`/`contactEmail`
-de §4.3) y `submission_context: { ip_country }` (el `submissionContext` de §4.3),
+de §4.3), `submission_context: { ip_country }` (el `submissionContext` de §4.3) y
+`form: { key, version }` (el `form` de §4.3, o `null`),
 que pueden ser `null` o faltar en eventos generados antes de que existieran:
 trátalos como opcionales.
 

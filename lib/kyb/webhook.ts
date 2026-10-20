@@ -6,6 +6,7 @@ import { open } from "@/lib/crypto/secretBox";
 import { safeWebhookFetch } from "@/lib/net/ssrfGuard";
 import { sendAlert } from "@/lib/mail/alert";
 import { publicAmlChecks } from "@/lib/kyb/amlPublic";
+import { FORM_SYSTEM_COLUMN, publicFormIdentity } from "@/lib/kyb/apiForm";
 
 export type WebhookEvent =
   | "request.submitted"
@@ -78,7 +79,7 @@ export async function notifyClient(
     const { data: req } = await supabase
       .from("kyb_requests")
       .select(
-        "id, external_ref, status, decision, decision_reason, corrections, webhook_endpoint_id, form_revision, subject_title, contact_email, submitted_ip_country, created_at, submitted_at, decided_at, token_expires_at",
+        `id, external_ref, status, decision, decision_reason, corrections, webhook_endpoint_id, form_revision, subject_title, contact_email, submitted_ip_country, created_at, submitted_at, decided_at, token_expires_at, ${FORM_SYSTEM_COLUMN}`,
       )
       .eq("id", requestId)
       .maybeSingle();
@@ -86,7 +87,7 @@ export async function notifyClient(
 
     const { data: aml } = await supabase
       .from("aml_checks")
-      .select("provider, status, result, created_at, updated_at")
+      .select("provider, feature, field_key, status, result, created_at, updated_at")
       .eq("request_id", requestId)
       // Mismo `aml[]` que GET /:id: sin las reemplazadas por una corrección.
       .is("superseded_at", null)
@@ -108,6 +109,8 @@ export async function notifyClient(
       reason: req.decision_reason ?? null,
       corrections: req.corrections ?? null,
       form_revision: req.form_revision ?? null,
+      // Formulario del sistema con el que se llenó (ver GET /:id).
+      form: publicFormIdentity(req.form_system),
       // Preguntas marcadas como título y email de contacto (ver GET /:id).
       subject_title: req.subject_title ?? null,
       contact_email: req.contact_email ?? null,

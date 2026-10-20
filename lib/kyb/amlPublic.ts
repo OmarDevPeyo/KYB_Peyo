@@ -43,6 +43,10 @@ function stripInternal(value: unknown, depth = 0): unknown {
 /** Fila de `aml_checks` tal como la proyectan los dos llamadores. */
 export type AmlCheckRow = {
   provider?: unknown;
+  /** Control de DIDIT (`aml_screening`, `id_verification`, `kyb_registry`…). */
+  feature?: unknown;
+  /** Pregunta del formulario de la que es el control. */
+  field_key?: unknown;
   status?: unknown;
   result?: unknown;
   created_at?: unknown;

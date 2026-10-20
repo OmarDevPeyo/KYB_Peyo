@@ -3,6 +3,7 @@ import { apiGuard } from "@/lib/auth/apiGuard";
 import { createServiceClient } from "@/lib/supabase/service";
 import { publicAmlChecks } from "@/lib/kyb/amlPublic";
 import { loadRequestExpirations, publicExpirations } from "@/lib/kyb/expirations";
+import { FORM_SYSTEM_COLUMN, publicFormIdentity } from "@/lib/kyb/apiForm";
 
 export const runtime = "nodejs";
 
@@ -25,7 +26,7 @@ export async function GET(
   const { data: request } = await supabase
     .from("kyb_requests")
     .select(
-      "id, external_ref, status, decision, decision_reason, corrections, form_id, form_revision, subject_title, contact_email, submitted_ip_country, created_at, submitted_at, decided_at, token_expires_at",
+      `id, external_ref, status, decision, decision_reason, corrections, form_id, form_revision, subject_title, contact_email, submitted_ip_country, created_at, submitted_at, decided_at, token_expires_at, ${FORM_SYSTEM_COLUMN}`,
     )
     .eq("id", id)
     .eq("api_key_id", g.keyId)
@@ -38,7 +39,7 @@ export async function GET(
   const [{ data: amlChecks }, expirations] = await Promise.all([
     supabase
       .from("aml_checks")
-      .select("provider, status, result, created_at, updated_at")
+      .select("provider, feature, field_key, status, result, created_at, updated_at")
       .eq("request_id", id)
       // Las reemplazadas por una corrección se conservan, pero no son las
       // vigentes: antes se borraban, así que el contrato no las incluye.
@@ -58,6 +59,8 @@ export async function GET(
     // Revisión del formulario con la que se creó la solicitud. `null` en
     // solicitudes anteriores a la migración 0018.
     formRevision: request.form_revision ?? null,
+    // Formulario del sistema con el que se llenó (clave y versión), o `null`.
+    form: publicFormIdentity(request.form_system),
     // Respuestas a las preguntas que el formulario marca como título y como
     // email de contacto. `null` si no hay marca o aún no se respondió.
     subjectTitle: request.subject_title ?? null,

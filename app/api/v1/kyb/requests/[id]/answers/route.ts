@@ -6,6 +6,7 @@ import { createSignedDocUrls } from "@/lib/kyb/service";
 import { resolveRequestDefinition } from "@/lib/forms/store";
 import { serializeAnswers, collectFileRefs } from "@/lib/kyb/apiSerialize";
 import { dropForeignFileRefs } from "@/lib/kyb/storagePaths";
+import { publicFormIdentity } from "@/lib/kyb/apiForm";
 import { clientAllowsTranslation, translateAnswers } from "@/lib/i18n-ai/answers";
 
 export const runtime = "nodejs";
@@ -89,6 +90,7 @@ export async function GET(
     status: request.status,
     formId: request.form_id ?? null,
     formRevision: request.form_revision ?? null,
+    form: publicFormIdentity(definition?.meta?.system),
     ...(translationEnabled ? { translatedTo: locale } : {}),
     answers: serializeAnswers(definition, data, signedUrls, locale, translations),
   });

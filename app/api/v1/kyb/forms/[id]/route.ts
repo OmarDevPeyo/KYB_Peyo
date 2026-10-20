@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiGuard } from "@/lib/auth/apiGuard";
 import { createServiceClient } from "@/lib/supabase/service";
 import { formDefinitionSchema } from "@/lib/forms/definition";
+import { publicFormIdentity } from "@/lib/kyb/apiForm";
 
 export const runtime = "nodejs";
 
@@ -64,6 +65,8 @@ export async function GET(
   return NextResponse.json({
     id: data.id,
     revision: (data.version as number | null) ?? 1,
+    // Clave y versión si es un formulario del sistema; si no, `null`.
+    form: publicFormIdentity(def.meta?.system),
     locales: def.locales,
     defaultLocale: def.defaultLocale,
     fields,
