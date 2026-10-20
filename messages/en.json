@@ -554,6 +554,7 @@
     "type_multiple_choice": "Multiple choice",
     "type_dropdown": "Dropdown",
     "type_country": "Country",
+    "type_naics": "Industry (NAICS)",
     "type_file": "File",
     "type_selfie": "Selfie (camera)",
     "type_boolean": "Yes/No",

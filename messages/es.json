@@ -554,6 +554,7 @@
     "type_multiple_choice": "Selección múltiple",
     "type_dropdown": "Desplegable",
     "type_country": "País",
+    "type_naics": "Industria (NAICS)",
     "type_file": "Archivo",
     "type_selfie": "Selfie (cámara)",
     "type_boolean": "Sí/No",

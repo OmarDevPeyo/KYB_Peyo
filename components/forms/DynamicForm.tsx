@@ -25,7 +25,7 @@ import {
   type Answers,
 } from "@/lib/forms/logic";
 import { countryOptions } from "@/lib/forms/countries";
-import { choiceProblem, toggleChoice } from "@/lib/forms/validation";
+import { choiceProblem, toggleChoice } from "@/lib/forms/choices";
 import { downscaleImage } from "@/lib/forms/imageCompress";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -719,6 +719,8 @@ function FieldInput({
         </select>
       ) : field.type === "country" ? (
         <CountryField value={value} onChange={onChange} locale={locale} disabled={disabled} />
+      ) : field.type === "naics" ? (
+        <NaicsField value={value} onChange={onChange} locale={locale} disabled={disabled} />
       ) : field.type === "file" ? (
         <FileField
           field={field}
@@ -962,6 +964,111 @@ function CountryField({
                   >
                     <span>{c.flag}</span>
                     <span className="truncate">{c.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Selector NAICS (buscador; valor = código de 6 dígitos) ----------
+const NAICS_TEXT = {
+  es: { search: "Busca por código o palabra (ej. 5415, software)…", empty: "Sin resultados", hint: "Escribe para buscar" },
+  en: { search: "Search by code or word (e.g. 5415, software)…", empty: "No results", hint: "Type to search" },
+} as const;
+
+type NaicsModule = typeof import("@/lib/forms/naics");
+
+/**
+ * Como CountryField, pero el catálogo (1.012 códigos, en dos idiomas) se carga
+ * recién cuando hace falta: al abrir el buscador o al mostrar un valor ya
+ * elegido. Así no pesa en los formularios que no lo usan.
+ */
+function NaicsField({
+  value,
+  onChange,
+  locale,
+  disabled = false,
+}: {
+  value: unknown;
+  onChange: (v: unknown) => void;
+  locale: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [catalog, setCatalog] = useState<NaicsModule | null>(null);
+  const code = typeof value === "string" ? value : "";
+  const text = locale === "en" ? NAICS_TEXT.en : NAICS_TEXT.es;
+  const lang = locale === "es" ? "es" : "en";
+
+  useEffect(() => {
+    if (catalog || (!open && !code)) return;
+    let alive = true;
+    import("@/lib/forms/naics").then((m) => {
+      if (alive) setCatalog(m);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open, code, catalog]);
+
+  const results = catalog ? catalog.searchNaics(query) : [];
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        className={`${inputCls} flex items-center justify-between text-left disabled:opacity-60`}
+      >
+        <span className={code ? "truncate" : "text-muted"}>
+          {code ? (catalog ? catalog.formatNaics(code, lang) : code) : "—"}
+        </span>
+        <span className="text-muted">▾</span>
+      </button>
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-hidden
+            className="fixed inset-0 z-10 cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <div className="absolute left-0 z-20 mt-1 w-full rounded-lg border border-border bg-surface-card shadow-lg">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={text.search}
+              className="w-full border-b border-border bg-transparent px-3 py-2 text-sm outline-none"
+            />
+            <div className="max-h-64 overflow-auto py-1">
+              {!query.trim() || !catalog ? (
+                <p className="px-3 py-1 text-xs text-muted">{catalog ? text.hint : "…"}</p>
+              ) : results.length === 0 ? (
+                <p className="px-3 py-1 text-xs text-muted">{text.empty}</p>
+              ) : (
+                results.map(([c, en, es]) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => {
+                      onChange(c);
+                      setQuery("");
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2 ${
+                      c === code ? "font-semibold text-brand" : "text-foreground"
+                    }`}
+                  >
+                    <span className="shrink-0 font-mono text-xs text-muted">{c}</span>
+                    <span>{lang === "es" ? es : en}</span>
                   </button>
                 ))
               )}

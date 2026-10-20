@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Field } from "./definition.ts";
-import { buildZod, choiceProblem, isCountryCode, toggleChoice } from "./validation.ts";
+import { buildZod } from "./validation.ts";
+import { choiceProblem, isCountryCode, toggleChoice } from "./choices.ts";
 
 const choice = (type: Field["type"], required = true, exclusive?: string): Field => ({
   id: type,
@@ -80,4 +81,13 @@ test("toggleChoice: marcar la excluyente deja solo esa, y marcar otra la quita",
   assert.deepEqual(toggleChoice(f, ["none"], "a", true), ["a"]);
   assert.deepEqual(toggleChoice(f, ["a"], "b", true), ["a", "b"]);
   assert.deepEqual(toggleChoice(f, ["a", "b"], "a", false), ["b"]);
+});
+
+test("naics: 6 dígitos que existan en NAICS 2022", () => {
+  const f: Field = { id: "i", key: "industry", type: "naics", label: "Industria", required: true };
+  assert.equal(ok(f, "541511"), true);
+  assert.equal(ok(f, "541510"), false); // forma correcta, código inexistente
+  assert.equal(ok(f, "5415"), false);
+  assert.equal(choiceProblem(f, "5415"), "invalid_option");
+  assert.equal(choiceProblem(f, "541510"), null); // en el navegador solo la forma
 });

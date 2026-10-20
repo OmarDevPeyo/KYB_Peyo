@@ -1,4 +1,5 @@
 import { resolveText, type Field } from "./definition";
+import { formatNaics } from "./naics";
 
 export type FileRef = { path: string; filename: string };
 
@@ -65,6 +66,8 @@ export function renderAnswer(
           .join(", ") || "—"
       );
     }
+    case "naics":
+      return formatNaics(String(value), locale);
     case "boolean":
       return BOOLEAN_TEXT[locale === "en" ? "en" : "es"][value === true ? "yes" : "no"];
     default:

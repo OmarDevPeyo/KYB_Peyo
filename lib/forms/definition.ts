@@ -72,6 +72,8 @@ export const FIELD_TYPES = [
   "multiple_choice",
   "dropdown",
   "country",
+  // Industria: un código NAICS 2022 de 6 dígitos (catálogo en ./naics.ts).
+  "naics",
   "file",
   "selfie",
   "boolean",
