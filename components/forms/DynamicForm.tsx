@@ -25,6 +25,7 @@ import {
   type Answers,
 } from "@/lib/forms/logic";
 import { countryOptions } from "@/lib/forms/countries";
+import { choiceProblem, toggleChoice } from "@/lib/forms/validation";
 import { downscaleImage } from "@/lib/forms/imageCompress";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -74,6 +75,11 @@ export interface DynamicFormProps {
     invalidEmail?: string;
     invalidNumber?: string;
     invalid?: string;
+    /** Una elección o un país que no está entre las opciones. */
+    invalidOption?: string;
+    /** Una opción excluyente («Ninguna») marcada junto a otras. */
+    exclusiveOption?: string;
+    notInteger?: string;
     /** Plantillas con {min}/{max}; se interpolan aquí. */
     tooShort?: string;
     tooLong?: string;
@@ -105,6 +111,9 @@ const DEFAULT_LABELS: Required<NonNullable<DynamicFormProps["labels"]>> = {
   invalidEmail: "Email inválido",
   invalidNumber: "Número inválido",
   invalid: "Valor inválido",
+  invalidOption: "Elige una de las opciones.",
+  exclusiveOption: "Esa opción no se combina con otras.",
+  notInteger: "Ingresa un número entero.",
   tooShort: "Mínimo {min} caracteres.",
   tooLong: "Máximo {max} caracteres.",
   numberTooSmall: "El mínimo es {min}.",
@@ -311,6 +320,7 @@ export function DynamicForm({
       } else if (f.type === "number") {
         const n = Number(val);
         if (Number.isNaN(n)) next[f.key] = L.invalidNumber;
+        else if (v.integer && !Number.isInteger(n)) next[f.key] = L.notInteger;
         else if (v.min != null && n < v.min)
           next[f.key] = L.numberTooSmall.replace("{min}", String(v.min));
         else if (v.max != null && n > v.max)
@@ -322,6 +332,10 @@ export function DynamicForm({
         else if (v.maxLen != null && s.length > v.maxLen)
           next[f.key] = L.tooLong.replace("{max}", String(v.maxLen));
         else if (v.pattern && !new RegExp(v.pattern).test(s)) next[f.key] = L.invalid;
+      } else {
+        // Elecciones y país: el mismo control que hace el servidor (fieldZod).
+        const problem = choiceProblem(f, val);
+        if (problem) next[f.key] = problem === "exclusive" ? L.exclusiveOption : L.invalidOption;
       }
     }
     return next;
@@ -672,13 +686,8 @@ function FieldInput({
                   className="accent-brand"
                   checked={arr.includes(o.value)}
                   disabled={disabled}
-                  onChange={(e) =>
-                    onChange(
-                      e.target.checked
-                        ? [...arr, o.value]
-                        : arr.filter((x) => x !== o.value),
-                    )
-                  }
+                  // Una opción excluyente («Ninguna») desmarca las demás, y al revés.
+                  onChange={(e) => onChange(toggleChoice(field, arr, o.value, e.target.checked))}
                 />
                 <span>{resolveText(o.label, locale)}</span>
                 {o.image && (

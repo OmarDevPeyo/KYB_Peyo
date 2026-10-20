@@ -143,6 +143,9 @@ export function ApplicantForm({
         invalidEmail: t("errEmail"),
         invalidNumber: t("errNumber"),
         invalid: t("errInvalid"),
+        invalidOption: t("errOption"),
+        exclusiveOption: t("errExclusive"),
+        notInteger: t("errInteger"),
         // Plantillas crudas: DynamicForm interpola {min}/{max} (patrón missingFields).
         tooShort: t.raw("errTooShort"),
         tooLong: t.raw("errTooLong"),

@@ -216,6 +216,8 @@ export const optionSchema = z.object({
   value: z.string(),
   label: localizedTextSchema,
   image: z.string().optional(), // URL pública de imagen de ayuda (opcional)
+  // Solo en `multiple_choice`: la opción no se combina con otras («Ninguna»).
+  exclusive: z.boolean().optional(),
 });
 export type FormOption = z.infer<typeof optionSchema>;
 
@@ -232,6 +234,8 @@ export const validationSchema = z
     min: z.number().optional(),
     max: z.number().optional(),
     pattern: z.string().optional(),
+    // Solo en `number`: exige un entero.
+    integer: z.boolean().optional(),
   })
   .optional();
 
