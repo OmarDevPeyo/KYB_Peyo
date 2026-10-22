@@ -14,6 +14,7 @@ import { Button, buttonClass } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { AnswerField, AnswerValue } from "@/components/admin/answerParts";
 import { IpCountryField } from "@/components/admin/IpCountryField";
+import { SubmissionOriginFields } from "@/components/admin/SubmissionOriginFields";
 import { DocumentsPanel } from "@/components/admin/DocumentsPanel";
 import { formatBytes, type DocGroup, type DocRow } from "@/components/admin/docParts";
 import {
@@ -30,6 +31,7 @@ import type { KybCorrections, KybStatus } from "@/lib/kyb/types";
 import { resolveRequestDefinition } from "@/lib/forms/store";
 import { countryName } from "@/lib/forms/countries";
 import { declaredCountries, ipCountryMismatch } from "@/lib/kyb/ipCountry";
+import { submissionContextOf } from "@/lib/kyb/submissionContext";
 import { isAnswered } from "@/lib/forms/logic";
 import { resolveText, type Field } from "@/lib/forms/definition";
 import { fileRefsOf, isLongAnswer } from "@/lib/forms/answers";
@@ -151,9 +153,11 @@ export default async function RequestDetail({
     request.org_id as string,
   );
 
-  // País de la IP con que se envió (0034). Se avisa si no coincide con ninguno
-  // de los países que declaró; el legacy no tiene preguntas país y no avisa.
-  const ipCountry = (request.submitted_ip_country as string | null) ?? null;
+  // Desde dónde se envió (0034 el país, 0036 IP, ciudad y navegador). Se avisa
+  // si el país no coincide con ninguno de los que declaró; el legacy no tiene
+  // preguntas país y no avisa.
+  const origin = submissionContextOf(request);
+  const ipCountry = origin.ipCountry;
   const declared = definition ? declaredCountries(definition, formData) : [];
   const ipWarning = ipCountryMismatch(ipCountry, declared)
     ? t("ipCountryMismatch", {
@@ -659,6 +663,17 @@ export default async function RequestDetail({
                 unknown={t("ipCountryUnknown")}
                 warning={ipWarning}
                 hint={t("ipCountryHint")}
+              />
+              <SubmissionOriginFields
+                ip={origin.ip}
+                ipCity={origin.ipCity}
+                ipRegion={origin.ipRegion}
+                userAgent={origin.userAgent}
+                labels={{
+                  ip: t("submissionIp"),
+                  location: t("submissionIpLocation"),
+                  userAgent: t("submissionUserAgent"),
+                }}
               />
             </dl>
           </Card>
