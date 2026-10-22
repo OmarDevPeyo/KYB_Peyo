@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiGuard } from "@/lib/auth/apiGuard";
 import { chooseRequestForm, createRequest } from "@/lib/kyb/service";
 import { createServiceClient } from "@/lib/supabase/service";
+import { SUBMISSION_CONTEXT_COLUMNS, submissionContextOf } from "@/lib/kyb/submissionContext";
 import {
   claimIdempotency,
   hashBody,
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("kyb_requests")
     .select(
-      "id, external_ref, status, decision, subject_title, contact_email, submitted_ip_country, created_at, submitted_at, decided_at",
+      `id, external_ref, status, decision, subject_title, contact_email, ${SUBMISSION_CONTEXT_COLUMNS}, created_at, submitted_at, decided_at`,
       { count: "exact" },
     )
     .eq("api_key_id", g.keyId)
@@ -62,8 +63,8 @@ export async function GET(req: NextRequest) {
       contactEmail: r.contact_email ?? null,
       createdAt: r.created_at,
       submittedAt: r.submitted_at,
-      // País de la IP del último envío (ver GET /:id).
-      submissionContext: { ipCountry: r.submitted_ip_country ?? null },
+      // Desde dónde se envió por última vez (ver GET /:id).
+      submissionContext: submissionContextOf(r),
       decidedAt: r.decided_at,
     })),
     limit,
