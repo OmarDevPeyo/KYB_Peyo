@@ -2,19 +2,25 @@ import "server-only";
 import { headers } from "next/headers";
 import { env } from "@/lib/env";
 import { normalizeIpCountry } from "@/lib/kyb/ipCountry";
+import {
+  EMPTY_SUBMISSION_CONTEXT,
+  submissionContextFromHeaders,
+  type SubmissionContext,
+} from "@/lib/kyb/submissionContext";
 
 /**
- * País (ISO alpha-2) de la IP de quien hace el pedido, o null.
+ * Desde dónde hace el pedido el solicitante: país, IP, región y ciudad de la IP,
+ * y el user agent (ver lib/kyb/submissionContext.ts).
  *
- * Lo calcula Vercel y lo manda en `x-vercel-ip-country`. Fuera de Vercel ese
- * header lo puede poner cualquiera, así que no se lee: en desarrollo se usa
- * `KYB_DEV_IP_COUNTRY` para poder probar, y en cualquier otro caso no hay dato.
+ * Lo calcula Vercel y lo manda en sus headers. Fuera de Vercel esos headers los
+ * puede poner cualquiera, así que no se leen: en desarrollo se usa
+ * `KYB_DEV_IP_COUNTRY` para poder probar el país, y en cualquier otro caso no
+ * hay dato.
  */
-export async function clientCountry(): Promise<string | null> {
-  if (env.onVercel()) {
-    const h = await headers();
-    return normalizeIpCountry(h.get("x-vercel-ip-country"));
+export async function clientSubmissionContext(): Promise<SubmissionContext> {
+  if (env.onVercel()) return submissionContextFromHeaders(await headers());
+  if (process.env.NODE_ENV !== "production") {
+    return { ...EMPTY_SUBMISSION_CONTEXT, ipCountry: normalizeIpCountry(env.devIpCountry()) };
   }
-  if (process.env.NODE_ENV !== "production") return normalizeIpCountry(env.devIpCountry());
-  return null;
+  return EMPTY_SUBMISSION_CONTEXT;
 }

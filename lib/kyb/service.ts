@@ -17,6 +17,7 @@ import { formDefinitionSchema, type FormDefinition } from "@/lib/forms/definitio
 import { resolveRequestSummary, type RequestSummary } from "@/lib/forms/internalFields";
 import { FORM_VERSION } from "@/lib/forms/schema";
 import { PRE_SUBMIT_STATUSES, acceptsApplicantWrites } from "@/lib/kyb/applicantWrites";
+import { submissionContextColumns, type SubmissionContext } from "@/lib/kyb/submissionContext";
 import type {
   KybCorrectionField,
   KybCorrections,
@@ -788,14 +789,14 @@ export async function snapshotResponses(input: {
  * Las verificaciones (DIDIT/AML) se disparan aparte con {@link runVerifications}
  * en segundo plano para no bloquear la respuesta al usuario.
  *
- * `ctx.ipCountry` es el país de la IP del envío (lib/request/clientCountry.ts):
- * lo lee el Server Action, porque acá no hay request. Un reenvío lo pisa; el de
- * cada envío queda en la auditoría.
+ * `ctx` es desde dónde se envió: país, IP, región, ciudad y navegador
+ * (lib/request/clientCountry.ts). Lo lee el Server Action, porque acá no hay
+ * request. Un reenvío lo pisa; el de cada envío queda en la auditoría.
  */
 export async function submitRequest(
   requestId: string,
   data: Record<string, unknown>,
-  ctx: { ipCountry: string | null },
+  ctx: SubmissionContext,
 ): Promise<void> {
   const supabase = createServiceClient();
   const { data: req } = await supabase
@@ -864,7 +865,7 @@ export async function submitRequest(
     .update({
       status: "submitted",
       submitted_at: new Date().toISOString(),
-      submitted_ip_country: ctx.ipCountry,
+      ...submissionContextColumns(ctx),
       corrections: null,
       ...(summary ? summaryColumns(summary) : {}),
     })
@@ -879,7 +880,7 @@ export async function submitRequest(
     action: "form_submitted",
     fromStatus: req.status,
     toStatus: "submitted",
-    metadata: { ipCountry: ctx.ipCountry },
+    metadata: { ...ctx },
   });
 }
 

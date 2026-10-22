@@ -10,6 +10,7 @@ import { recordCheckCharge } from "@/lib/didit/costs";
 import { logAudit, snapshotResponses } from "@/lib/kyb/service";
 import { notifyClient } from "@/lib/kyb/webhook";
 import { loadRequestExpirations, syncRequestExpirations } from "@/lib/kyb/expirations";
+import type { SubmissionContext } from "@/lib/kyb/submissionContext";
 
 // ============================================================
 // Rondas de renovación de documentos (document_renewals, migración 0030)
@@ -358,13 +359,13 @@ export async function saveRenewalDraft(
 
 /**
  * `requested → submitted` con compare-and-set: un doble envío gana una sola vez.
- * `ctx.ipCountry` (país de la IP del envío) va solo a la auditoría: la columna de
- * la solicitud es la del envío del formulario.
+ * `ctx` (desde dónde se envió: país, IP, ciudad, navegador) va solo a la
+ * auditoría: las columnas de la solicitud son las del envío del formulario.
  */
 export async function submitRenewal(
   renewal: RenewalRow,
   answers: Record<string, unknown>,
-  ctx: { ipCountry: string | null },
+  ctx: SubmissionContext,
 ): Promise<boolean> {
   const { data } = await createServiceClient()
     .from("document_renewals")
@@ -383,7 +384,7 @@ export async function submitRenewal(
     requestId: renewal.request_id,
     actor: "applicant",
     action: "renewal_submitted",
-    metadata: { round: renewal.round, keys: renewal.keys, ipCountry: ctx.ipCountry },
+    metadata: { round: renewal.round, keys: renewal.keys, ...ctx },
   });
   return true;
 }
